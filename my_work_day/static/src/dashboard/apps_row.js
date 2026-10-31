@@ -1,7 +1,8 @@
 import { Component } from "@odoo/owl";
 
-import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
+
+import { MwdAppsDialog } from "@my_work_day/dashboard/apps_dialog";
 
 /**
  * Shortcuts to the apps the user actually uses.
@@ -17,8 +18,7 @@ export class MwdAppsRow extends Component {
 
     setup() {
         this.menu = useService("menu");
-        this.action = useService("action");
-        this.orm = useService("orm");
+        this.dialog = useService("dialog");
     }
 
     get apps() {
@@ -30,12 +30,10 @@ export class MwdAppsRow extends Component {
         this.menu.selectMenu(app);
     }
 
-    /** Open the user's own preferences, the same way the user menu does. */
-    async onEditFavorites() {
-        const actionDescription = await this.orm.call("res.users", "action_get");
-        actionDescription.res_id = user.userId;
-        this.action.doAction(actionDescription, {
-            onClose: () => this.props.onChanged(),
+    onEditFavorites() {
+        this.dialog.add(MwdAppsDialog, {
+            menuIds: this.props.menuIds,
+            onConfirmed: () => this.props.onChanged(),
         });
     }
 }

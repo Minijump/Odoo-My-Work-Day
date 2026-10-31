@@ -1,21 +1,109 @@
-# Odoo-My-Work-Day
-Creation of a dashboard that aims to replace Odoo's main page
+# My Work Day
 
-Instead of the app switcher as default odoo menu, we should be able to see a 'daily dashboard' (app switcher should still be available). The goal is to display the work the user has to do. For example: 2 sale orders in draft, 4 invoices to approve, 3 purchase where there is an error in mail sending,... This Dashboard should look similar (in design) to the Dashboard which is used in odoo standard for the accounting app. However, note that this is an enterprise module and I want mine to be usable in a Community db, so do not re-use/copy any components, this is only an example.
+An Odoo 19 **Community** module that replaces the app-switcher landing page with a
+personal dashboard of the work actually waiting for you: draft orders, invoices to
+approve, activities due today, and anything else you care to count.
 
-The suggested architecture is the Following (open to discussion)
-Base feature:
-- Every users should be able to create their own Dashboard tiles
-- In every of these tiles, they will select a model and several filters. For each filters they will also provide a name. Such as 'name = draft; filter = status == draft'. ON the Dashboard tile, we will see a line 'draft = number of draft order'. Clicking on this line/on the number would redirect to a list view that is filtered accordingly. A tile can of course contain several filters. And a Dashboard have several tiles.
-- It is essential that an admin can select what are the models,... the user can select, we do not want the user to bypass some 'hidden menus'
+It is written from scratch. It borrows nothing from the enterprise accounting
+dashboard, depends only on `base` and `web`, and installs on a plain Community
+database.
 
-Possible improvements:
-- It would be nice if the user could also define things such a 'color rules' for each filters. Such as if there is more than 3 draft, color of the line should be red.
-- It would like to enable a 'calendar' tile, that would show the calendar of the user for this day (one of the calendar, in odoo we can find several different calendars so this feature may be challenging)
-- It would be nice if the user could also define 'graphs': such as bar graphs displaying draft orders per employee of their team. This feature seems really nice but maybe complex?
-- It would be nice if the sizes of the tiles were customizable. Let's say we define that a Dashboard is a 4x3 tiles, we should be able to say that the tile w takes more spaces than the y. I do not know if this is easily feasible and working with mobile views,...
-- It would also be nice if we could select 'favourite' apps, those apps would be displayed on the daily dashboard, maybe the best thing would be a bottom bar with the favourite app, and an app switcher iconthat redirects to the app switcher? (for community there is no app switcher but it would simply open the menu)
-- It would be nice if the users could 'share' their tile: the idea would be that one of them creates the required filters, and every members that want it/are allowed to, can duplicate it so that they have the same filters in their dashboard. Note that I think that a duplicate function could be enough, the only thing is that 'owner' should be re,oved at duplicate.
-- A tile with notifications may also be great. Same things for tasks to doµ
-- If possible, an auto refresh of the page evey x time would be very great, so that the user do not need to refresh the page to see new things. Note that too much refresh may increase databse load and too few may be useless. So this feature may not be the best idea.
+## What it does
 
+**Tiles.** Each tile points at one model and holds any number of named filters.
+A filter line shows its label and its count: *Quotations 4*. Click the line and
+you land on that exact list, filtered. Click the tile header and you get the whole
+model.
+
+**Colour rules.** A line can turn info, success, warning or danger past a threshold
+you set, so *Overdue 3* catches your eye and *Planned 19* does not.
+
+**Three kinds of tile.**
+
+| Type | Shows |
+|---|---|
+| Counter | One line per filter, with counts |
+| Agenda | Today's records on a date field, in time order |
+| Breakdown | A `read_group` drawn as bars — orders per salesperson, say |
+
+**Tile sizes.** One to four columns wide, one or two rows tall. The grid collapses
+to a single column on a phone.
+
+**Sharing.** Mark a tile shared and colleagues can copy it onto their own dashboard.
+They get your filters, not your data: the copy belongs to them and counts through
+their own access rights.
+
+**App shortcuts.** Pick your apps from the dashboard header; they sit next to the
+title with their real icons.
+
+**Auto-refresh.** Off by default. When on, it pauses while the browser tab is
+hidden, so a dashboard left open in a background tab stops polling.
+
+## Security
+
+Two separate mechanisms, and it matters which does what.
+
+**The whitelist is governance, not security.** An administrator decides which models
+anyone may build a tile on, under *My Work Day → Configuration → Selectable Models*.
+It stops users pointing tiles at corners of the database nobody meant them to think
+about. **It is empty on install by design** — nothing is offered until an
+administrator chooses it. It is enforced server-side by a constraint on the tile,
+not only by the form's domain, because a domain is a hint to the client.
+
+**Access rights are the real boundary.** Every count, every breakdown and every
+click-through runs in the user's own environment. Record rules and access rights
+apply exactly as they do anywhere else, so a tile can never show a number larger
+than what that user could already reach from the menus. There is a test that proves
+this: it adds a record rule hiding records from a user and asserts the tile count
+drops to match.
+
+## Landing page
+
+Two steps, both opt-in:
+
+1. *Settings → General Settings → My Work Day* turns on the default for new users.
+2. Any user can click the home icon on the dashboard to make it their own landing
+   page, or click it again to go back to the apps.
+
+Odoo 19 does not honour `res.users.action_id` on `/odoo` by itself — the web client
+opens the first app in the menu and only falls back to the home action for a broken
+URL. The module patches one method, `WebClient._loadDefaultApp`, and the patch is
+guarded by a session flag that is only true for users who opted in. Everyone else
+runs Odoo's original code.
+
+## Installing
+
+Needs nothing but a Community database.
+
+```bash
+odoo-bin -d <database> --addons-path=<odoo>/addons,<this repo> -i my_work_day
+```
+
+Then, as an administrator, add a few models under *Configuration → Selectable
+Models*. Until you do, users have nothing to build tiles on. The first time a user
+opens the dashboard they get starter tiles for whatever you made selectable.
+
+## Developing
+
+`.vscode/launch.json` is git-ignored, so each developer keeps their own. A working
+set of configurations covers: create a test database with demo data, run the server
+with `--dev=xml`, run the tests, and run the tests on a bare `base` + `web` database.
+
+Two things that bite on Odoo 19 specifically:
+
+- Demo data is **opt-in**. Without `--with-demo` you get an empty database and every
+  tile counts zero.
+- The test tag is `--test-tags=/my_work_day` and nothing else. `post_install` is a
+  global tag rather than a filter, so `/my_work_day,post_install` reads as "this
+  module OR anything tagged post_install" and pulls in the whole `web` browser suite.
+
+```bash
+odoo-bin -d <database> --addons-path=<odoo>/addons,<this repo> -u my_work_day --test-enable --test-tags=/my_work_day --stop-after-init
+```
+
+26 tests, built on `res.partner` so they pass on a database with nothing else
+installed.
+
+## Licence
+
+LGPL-3.

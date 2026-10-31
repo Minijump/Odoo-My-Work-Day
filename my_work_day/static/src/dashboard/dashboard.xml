@@ -4,7 +4,8 @@
     <t t-name="my_work_day.Dashboard">
         <div class="o_action mwd_dashboard d-flex flex-column h-100">
 
-            <div class="mwd_header d-flex flex-wrap align-items-center gap-2 px-3 py-2">
+            <div class="mwd_header px-3 py-2">
+              <div class="mwd_header_top d-flex flex-wrap align-items-center gap-2">
                 <h1 class="mwd_title mb-0 me-auto">
                     <t t-esc="state.data?.name or 'My Work Day'"/>
                 </h1>
@@ -28,6 +29,16 @@
                         t-att-title="state.data?.is_home ? 'This is your landing page' : 'Make this your landing page'">
                     <i class="fa fa-home"/>
                 </button>
+              </div>
+
+              <!--
+                  The app shortcuts live in the header rather than in the
+                  scrolling area, so they stay reachable once the page is
+                  scrolled down past the tiles.
+              -->
+              <MwdAppsRow t-if="state.data?.show_apps"
+                          menuIds="state.data.app_menu_ids"
+                          onChanged.bind="load"/>
             </div>
 
             <div class="o_content mwd_content flex-grow-1 overflow-auto px-3 pb-4">
@@ -39,10 +50,6 @@
                 </div>
 
                 <t t-elif="state.data">
-                    <MwdAppsRow t-if="state.data.show_apps"
-                                menuIds="state.data.app_menu_ids"
-                                onChanged.bind="load"/>
-
                     <!-- Brand new, nothing configured -->
                     <div t-if="!tiles.length" class="mwd_empty text-center py-5">
                         <i class="fa fa-coffee fa-3x text-muted mb-3 d-block"/>
@@ -75,7 +82,7 @@
     </t>
 
     <t t-name="my_work_day.AppsRow">
-        <div class="mwd_apps d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div class="mwd_apps d-flex flex-wrap align-items-center gap-2 mt-2">
             <t t-foreach="apps" t-as="app" t-key="app.id">
                 <button class="mwd_app btn btn-light d-flex align-items-center gap-2"
                         t-on-click="() => this.onOpenApp(app)">

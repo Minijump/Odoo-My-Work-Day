@@ -41,7 +41,6 @@ already reach from the menus.
             'my_work_day/static/src/dashboard/**/*.dark.scss',
         ],
     },
-    'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': True,
 }

@@ -1,0 +1,6 @@
+# VS Code launch/debug setup is per-developer, not part of the module.
+.vscode/
+
+# Python bytecode
+__pycache__/
+*.py[cod]

@@ -11,9 +11,15 @@
 .mwd_dashboard {
     background-color: $body-bg;
 
+    // The header sits outside the scrolling area, so the title, the actions
+    // and the app shortcuts stay put while the tiles scroll under them.
     .mwd_header {
         border-bottom: 1px solid $border-color;
         background-color: $o-gray-100;
+        flex: 0 0 auto;
+        position: sticky;
+        top: 0;
+        z-index: 1;
     }
 
     .mwd_title {
@@ -163,5 +169,58 @@
             min-width: 2px;
             transition: width 0.2s ease;
         }
+    }
+}
+
+// --- the app picker dialog --------------------------------------------
+//
+// Outside the .mwd_dashboard block on purpose: the dialog is rendered into
+// the modal container at the end of the body, not inside the dashboard, so
+// a nested rule would never match it.
+
+.mwd_app_picker {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+}
+
+.mwd_app_choice {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.75rem 0.5rem;
+    border: 1px solid $border-color;
+    border-radius: 0.5rem;
+    background-color: transparent;
+    text-align: center;
+
+    &:hover {
+        background-color: $o-gray-200;
+    }
+
+    &.mwd_app_chosen {
+        border-color: $primary;
+        background-color: rgba($primary, 0.08);
+    }
+
+    .mwd_app_choice_icon {
+        height: 2.5rem;
+        width: auto;
+    }
+
+    .mwd_app_choice_name {
+        font-size: 0.8125rem;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+    }
+
+    .mwd_app_check {
+        position: absolute;
+        top: 0.25rem;
+        right: 0.4rem;
+        color: $primary;
+        font-size: 0.8125rem;
     }
 }

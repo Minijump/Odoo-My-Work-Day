@@ -9,6 +9,9 @@
     <record id="action_my_work_day_dashboard" model="ir.actions.client">
         <field name="name">My Work Day</field>
         <field name="tag">my_work_day_dashboard</field>
+        <!-- Gives the dashboard a readable URL, /odoo/my-work-day, instead of
+             /odoo/action-<database id>. -->
+        <field name="path">my-work-day</field>
     </record>
 
     <record id="action_mwd_dashboard_config" model="ir.actions.act_window">
