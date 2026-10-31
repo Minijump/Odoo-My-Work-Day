@@ -155,6 +155,54 @@
         background-color: var(--mwd-accent, #{$primary});
     }
 
+    // --- calendar tiles -------------------------------------------------
+    //
+    // The view brings its own layout, so all that is needed here is a box with
+    // a definite height to put it in: FullCalendar measures its container and
+    // would collapse to nothing inside a grid row sized by its content. The
+    // height follows the tile's own, which is why a calendar wants a tall tile.
+    // `calc()` is written as an interpolated string because Sass parses its own
+    // `calc` and would choke on the custom property.
+
+    .mwd_calendar {
+        min-height: #{"calc(13rem * var(--mwd-tile-height, 1))"};
+        font-size: 0.875rem;
+
+        > .o_view_controller {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-width: 0;
+
+            // The chain has to be flex the whole way down. The calendar sizes
+            // itself with `h-100`, and a percentage height only resolves when
+            // its parent has a definite one -- which a plain block inside a
+            // flex column does not.
+            > .o_content {
+                display: flex;
+                flex-direction: column;
+                flex: 1 1 auto;
+                min-height: 0;
+
+                > .o_calendar_container {
+                    flex: 1 1 auto;
+                    min-height: 0;
+                }
+            }
+        }
+
+        // The header is sized for a full page; inside a tile it has to give
+        // the grid its room back.
+        .o_calendar_header {
+            padding-top: 0.25rem !important;
+            padding-bottom: 0.25rem !important;
+
+            h5 {
+                font-size: 0.9375rem;
+            }
+        }
+    }
+
     .mwd_agenda_time {
         font-variant-numeric: tabular-nums;
         white-space: nowrap;

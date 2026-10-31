@@ -6,7 +6,7 @@ import { useService } from "@web/core/utils/hooks";
 import { standardActionServiceProps } from "@web/webclient/actions/action_service";
 
 import { MwdAppsRow } from "./apps_row";
-import { MwdTile } from "./tile";
+import { MwdTile, isTileEmpty } from "./tile";
 
 /**
  * The My Work Day dashboard.
@@ -30,6 +30,8 @@ export class MwdDashboard extends Component {
             loading: true,
             error: null,
             refreshedAt: null,
+            // Set when the user asks to see the tiles anyway on a clear day.
+            showClearedTiles: false,
         });
 
         this.refreshTimer = null;
@@ -59,6 +61,19 @@ export class MwdDashboard extends Component {
 
     get tiles() {
         return this.state.data?.tiles || [];
+    }
+
+    /**
+     * True when there is genuinely nothing waiting: every tile loaded, and
+     * every one of them came back with nothing in it.
+     *
+     * This is worth saying out loud rather than drawing: a screenful of tiles
+     * each reading "Nothing to show" takes real attention to confirm, and the
+     * one thing the reader wants to know is that they are clear.
+     */
+    get allClear() {
+        const tiles = this.tiles;
+        return tiles.length > 0 && tiles.every((tile) => isTileEmpty(tile));
     }
 
     get gridStyle() {

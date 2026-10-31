@@ -33,12 +33,12 @@ already reach from the menus.
     ],
     'assets': {
         'web.assets_backend': [
-            'my_work_day/static/src/dashboard/**/*.js',
-            'my_work_day/static/src/dashboard/**/*.xml',
+            'my_work_day/static/src/**/*.js',
+            'my_work_day/static/src/**/*.xml',
             'my_work_day/static/src/dashboard/dashboard.scss',
         ],
         'web.assets_web_dark': [
-            'my_work_day/static/src/dashboard/**/*.dark.scss',
+            'my_work_day/static/src/**/*.dark.scss',
         ],
     },
     'installable': True,

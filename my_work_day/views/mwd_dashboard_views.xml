@@ -22,7 +22,6 @@
                             <field name="column_count"/>
                         </group>
                         <group>
-                            <field name="refresh_interval"/>
                             <field name="show_apps"/>
                         </group>
                     </group>
@@ -54,7 +53,6 @@
                 <field name="name"/>
                 <field name="user_id"/>
                 <field name="tile_count" string="Tiles"/>
-                <field name="refresh_interval" optional="show"/>
             </list>
         </field>
     </record>

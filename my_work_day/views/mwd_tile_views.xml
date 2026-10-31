@@ -23,6 +23,9 @@
                             <field name="allowed_model_id" options="{'no_create': True}"/>
                             <field name="model_name" invisible="1"/>
                             <field name="tile_type" widget="radio"/>
+                            <field name="date_field_id" options="{'no_create': True}"
+                                   invisible="tile_type not in ['agenda', 'calendar']"
+                                   required="tile_type in ['agenda', 'calendar']"/>
                             <field name="base_domain" widget="domain"
                                    options="{'model': 'model_name', 'foldable': True}"
                                    invisible="not model_name"/>
@@ -89,13 +92,25 @@
                         </page>
                         <page string="Agenda" name="agenda" invisible="tile_type != 'agenda'">
                             <group>
-                                <field name="date_field_id" options="{'no_create': True}"
-                                       required="tile_type == 'agenda'"/>
                                 <field name="agenda_limit"/>
                             </group>
                             <div class="text-muted">
                                 Shows the records of this model happening today, in time
                                 order, using your own time zone.
+                            </div>
+                        </page>
+                        <page string="Calendar" name="calendar"
+                              invisible="tile_type != 'calendar'">
+                            <group>
+                                <field name="calendar_mode"/>
+                            </group>
+                            <div class="text-muted">
+                                Draws a real calendar grid inside the tile, using Odoo's
+                                own calendar view. It is read-only: a drag on a tile this
+                                size is likelier to be a slip than an intention.
+                                <br/>
+                                A calendar needs vertical room, so give this tile a
+                                height of <em>Tall</em> and at least a double width.
                             </div>
                         </page>
                         <page string="Breakdown" name="breakdown"
@@ -148,6 +163,27 @@
         </field>
     </record>
 
+    <!--
+        Shown by the Check Tiles action. A list of its own rather than an
+        optional column on the normal one: broken_reason is computed by
+        validating every domain, which is not something to do on every list
+        of tiles anyone happens to open.
+    -->
+    <record id="mwd_tile_view_list_broken" model="ir.ui.view">
+        <field name="name">mwd.tile.list.broken</field>
+        <field name="model">mwd.tile</field>
+        <field name="priority" eval="99"/>
+        <field name="arch" type="xml">
+            <list string="Broken Tiles" create="false">
+                <field name="user_id"/>
+                <field name="name"/>
+                <field name="tile_type"/>
+                <field name="allowed_model_id"/>
+                <field name="broken_reason" class="text-danger"/>
+            </list>
+        </field>
+    </record>
+
     <record id="mwd_tile_view_search" model="ir.ui.view">
         <field name="name">mwd.tile.search</field>
         <field name="model">mwd.tile</field>
@@ -164,6 +200,8 @@
                 <filter name="agendas" string="Agendas" domain="[('tile_type', '=', 'agenda')]"/>
                 <filter name="breakdowns" string="Breakdowns"
                         domain="[('tile_type', '=', 'breakdown')]"/>
+                <filter name="calendars" string="Calendars"
+                        domain="[('tile_type', '=', 'calendar')]"/>
                 <group>
                     <filter name="group_owner" string="Owner" context="{'group_by': 'user_id'}"/>
                     <filter name="group_model" string="Model"

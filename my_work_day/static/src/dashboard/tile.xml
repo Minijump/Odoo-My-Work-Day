@@ -17,7 +17,13 @@
                 </button>
             </div>
 
-            <div class="mwd_tile_body card-body">
+            <!--
+                A calendar fills its tile edge to edge: the view brings its own
+                header and spacing, and card padding on top of that leaves a
+                month grid no room to be read.
+            -->
+            <div class="mwd_tile_body card-body"
+                 t-att-class="{ 'p-0 overflow-hidden': tile.type === 'calendar' and !tile.error }">
 
                 <!-- Something went wrong with this one tile only -->
                 <div t-if="tile.error" class="mwd_tile_error text-danger small">
@@ -58,6 +64,9 @@
                         and <t t-esc="tile.total - tile.entries.length"/> more
                     </div>
                 </t>
+
+                <!-- A real calendar, rendered by Odoo's own calendar view -->
+                <MwdCalendarTile t-elif="tile.type === 'calendar'" tile="tile"/>
 
                 <!-- Breakdown bars -->
                 <t t-elif="tile.type === 'breakdown'">

@@ -653,3 +653,153 @@ class TestMyWorkDay(TransactionCase):
 
         with self._with_partner_blueprint():
             self.assertTrue(dashboard_model.get_dashboard_data()['tiles'])
+
+    # ------------------------------------------------------------------
+    # Calendar tiles
+    # ------------------------------------------------------------------
+
+    def _calendar_tile(self, user, field_name='create_date', **values):
+        dashboard = self._dashboard_for(user)
+        date_field = self.env['ir.model.fields']._get('res.partner', field_name)
+        return self.env['mwd.tile'].with_user(user).create({
+            'dashboard_id': dashboard.id,
+            'name': values.pop('name', 'Diary'),
+            'tile_type': 'calendar',
+            'allowed_model_id': self.allowed_partner.id,
+            'date_field_id': date_field.id,
+            **values,
+        })
+
+    def test_calendar_tile_is_built_around_its_own_date_field(self):
+        """The arch must name the field the owner picked, not the model's own view."""
+        tile = self._calendar_tile(self.alice, calendar_mode='day')
+        data = tile.with_user(self.alice)._get_tile_data()
+
+        self.assertFalse(data['error'])
+        self.assertEqual(data['type'], 'calendar')
+        self.assertIn('date_start="create_date"', data['arch'])
+        self.assertIn('mode="day"', data['arch'])
+        # Read-only: a dashboard is for looking at.
+        for attribute in ('create="0"', 'edit="0"', 'delete="0"'):
+            self.assertIn(attribute, data['arch'])
+        self.assertIsInstance(data['domain'], list)
+
+    def test_calendar_tile_hands_over_a_resolved_domain(self):
+        """The browser is handed a domain, never an expression to evaluate."""
+        tile = self._calendar_tile(
+            self.alice, base_domain="[('is_company', '=', True), ('id', '!=', uid)]")
+        data = tile.with_user(self.alice)._get_tile_data()
+        leaves = [tuple(leaf) for leaf in data['domain'] if not isinstance(leaf, str)]
+        self.assertIn(('is_company', '=', True), leaves)
+        self.assertIn(('id', '!=', self.alice.id), leaves)
+
+    def test_calendar_tile_requires_a_date_field(self):
+        dashboard = self._dashboard_for(self.alice)
+        with self.assertRaises(ValidationError):
+            self.env['mwd.tile'].with_user(self.alice).create({
+                'dashboard_id': dashboard.id,
+                'name': 'No date', 'tile_type': 'calendar',
+                'allowed_model_id': self.allowed_partner.id,
+            })
+
+    def test_a_broken_calendar_tile_does_not_take_the_dashboard_with_it(self):
+        dashboard = self._dashboard_for(self.alice)
+        good = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        broken = self._calendar_tile(self.alice)
+        self._blank_tile_column(broken, 'date_field_id')
+
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data(dashboard.id)
+        by_id = {tile['id']: tile for tile in data['tiles']}
+        self.assertTrue(by_id[broken.id]['error'], "the broken tile reports its own failure")
+        self.assertFalse(by_id[good.id]['error'], "every other tile still works")
+
+    # ------------------------------------------------------------------
+    # Auto-refresh is the administrator's to set
+    # ------------------------------------------------------------------
+
+    def test_refresh_interval_is_off_until_an_administrator_sets_it(self):
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data()
+        self.assertEqual(data['refresh_interval'], 0)
+
+    def test_refresh_interval_comes_from_the_system_parameter(self):
+        """One setting for the database: it decides how often everyone queries."""
+        self.env['ir.config_parameter'].sudo().set_param(
+            'my_work_day.refresh_interval', '300')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data()
+        self.assertEqual(data['refresh_interval'], 300)
+
+    def test_a_nonsense_refresh_parameter_does_not_break_the_dashboard(self):
+        self.env['ir.config_parameter'].sudo().set_param(
+            'my_work_day.refresh_interval', 'every so often')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data()
+        self.assertEqual(data['refresh_interval'], 0)
+
+    def test_a_user_has_no_refresh_interval_to_set(self):
+        """It was a per-dashboard field; it is a system parameter now."""
+        self.assertNotIn('refresh_interval', self.env['mwd.dashboard']._fields)
+
+    # ------------------------------------------------------------------
+    # The upgrade health check
+    # ------------------------------------------------------------------
+
+    def _break_line_domain(self, line, domain):
+        """Put a domain past the ORM's validation, the way an upgrade would."""
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE mwd_tile_line SET domain = %s WHERE id = %s", (domain, line.id))
+        self.env.invalidate_all()
+
+    def test_a_healthy_tile_has_no_problem_to_report(self):
+        tile = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        self.assertFalse(tile.broken_reason)
+
+    def test_check_tiles_says_so_when_every_tile_is_fine(self):
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        result = self.env['mwd.tile'].action_check_tiles()
+        self.assertEqual(result['type'], 'ir.actions.client')
+        self.assertEqual(result['tag'], 'display_notification')
+
+    def test_check_tiles_lists_a_tile_whose_field_disappeared(self):
+        tile = self._counter_tile(self.alice, [{'name': 'Companies', 'domain': "[]"}])
+        self._break_line_domain(tile.line_ids, "[('field_that_vanished', '=', 1)]")
+
+        self.assertIn('field_that_vanished', tile.broken_reason)
+        self.assertIn('Companies', tile.broken_reason,
+                      "the report says which line is at fault")
+
+        result = self.env['mwd.tile'].action_check_tiles()
+        self.assertEqual(result['type'], 'ir.actions.act_window')
+        self.assertEqual(result['res_model'], 'mwd.tile')
+        self.assertIn(tile.id, result['domain'][0][2])
+
+    def test_check_tiles_lists_a_tile_whose_model_is_gone(self):
+        dashboard = self._dashboard_for(self.alice)
+        allowed_currency = self.env['mwd.allowed.model'].create({
+            'model_id': self.env['ir.model']._get('res.currency').id,
+        })
+        tile = self.env['mwd.tile'].with_user(self.alice).create({
+            'dashboard_id': dashboard.id,
+            'name': 'Vanished model',
+            'allowed_model_id': allowed_currency.id,
+            'line_ids': [(0, 0, {'name': 'All', 'domain': "[]"})],
+        })
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE mwd_allowed_model SET model_name = %s WHERE id = %s",
+            ('no.such.model', allowed_currency.id))
+        self.env.invalidate_all()
+
+        self.assertIn('no.such.model', tile.broken_reason)
+        result = self.env['mwd.tile'].action_check_tiles()
+        self.assertEqual(result['type'], 'ir.actions.act_window')
+        self.assertIn(tile.id, result['domain'][0][2])
+
+    def test_check_tiles_reaches_every_owner(self):
+        """An administrator's check is worthless if it only sees their own tiles."""
+        tile = self._counter_tile(self.bob, [{'name': 'All', 'domain': "[]"}])
+        self._break_line_domain(tile.line_ids, "[('nope', '=', 1)]")
+        result = self.env['mwd.tile'].action_check_tiles()
+        self.assertIn(tile.id, result['domain'][0][2])

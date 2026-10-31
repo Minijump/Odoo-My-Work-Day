@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-name="my_work_day.CalendarTile">
+        <div class="mwd_calendar d-flex flex-column">
+            <View t-props="viewProps"/>
+        </div>
+    </t>
+
+</templates>

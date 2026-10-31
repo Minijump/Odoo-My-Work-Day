@@ -1,5 +1,6 @@
 from odoo import _, api, fields, models
 
+from .mwd_dashboard import REFRESH_INTERVAL_PARAM
 from .res_users import HOME_ACTION_PARAM
 
 
@@ -15,6 +16,18 @@ class ResConfigSettings(models.TransientModel):
     )
     mwd_user_count = fields.Integer(
         string='Users on My Work Day', compute='_compute_mwd_user_count')
+    mwd_refresh_interval = fields.Selection(
+        [('0', 'Off'), ('120', 'Every 2 minutes'), ('300', 'Every 5 minutes'),
+         ('900', 'Every 15 minutes')],
+        string='Auto Refresh', default='0',
+        config_parameter=REFRESH_INTERVAL_PARAM,
+        help="How often an open dashboard reloads its counters. This is set "
+             "here rather than per dashboard because the number decides how "
+             "much the database is queried, which is not a choice to leave to "
+             "each user. Refreshing pauses while a browser tab is in the "
+             "background, so a dashboard left open overnight still costs "
+             "nothing.",
+    )
 
     @api.depends('mwd_default_home_action')
     def _compute_mwd_user_count(self):

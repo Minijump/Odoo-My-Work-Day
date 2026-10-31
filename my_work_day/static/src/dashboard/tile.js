@@ -1,5 +1,34 @@
 import { Component } from "@odoo/owl";
 
+import { MwdCalendarTile } from "./calendar_tile";
+
+/**
+ * Whether a tile has nothing at all to show.
+ *
+ * Exported because the dashboard needs the same answer for every tile at once,
+ * to decide whether the whole day is clear -- and two definitions of "empty"
+ * that could drift apart would be a bug waiting to happen.
+ */
+export function isTileEmpty(tile) {
+    if (tile.error) {
+        return false;
+    }
+    switch (tile.type) {
+        case "count":
+            return !tile.lines?.length;
+        case "agenda":
+            return !tile.entries?.length;
+        case "breakdown":
+            return !tile.bars?.length;
+        // A calendar is never empty: an empty week is still a week, and the
+        // grid is the point of the tile.
+        case "calendar":
+            return false;
+        default:
+            return true;
+    }
+}
+
 /**
  * One tile on the dashboard.
  *
@@ -9,6 +38,7 @@ import { Component } from "@odoo/owl";
  */
 export class MwdTile extends Component {
     static template = "my_work_day.Tile";
+    static components = { MwdCalendarTile };
     static props = {
         tile: Object,
         onOpenTile: Function,
@@ -26,20 +56,7 @@ export class MwdTile extends Component {
     }
 
     get isEmpty() {
-        const tile = this.tile;
-        if (tile.error) {
-            return false;
-        }
-        if (tile.type === "count") {
-            return !tile.lines?.length;
-        }
-        if (tile.type === "agenda") {
-            return !tile.entries?.length;
-        }
-        if (tile.type === "breakdown") {
-            return !tile.bars?.length;
-        }
-        return true;
+        return isTileEmpty(this.tile);
     }
 
     colorClass(color) {

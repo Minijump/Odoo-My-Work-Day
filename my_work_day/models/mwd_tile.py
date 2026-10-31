@@ -4,6 +4,8 @@ import logging
 import pytz
 from dateutil.relativedelta import relativedelta
 
+from markupsafe import escape
+
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.fields import Domain
@@ -56,11 +58,13 @@ class MwdTile(models.Model):
     user_id = fields.Many2one(
         related='dashboard_id.user_id', string='Owner', store=True, index=True)
     tile_type = fields.Selection(
-        [('count', 'Counters'), ('agenda', "Today's Agenda"), ('breakdown', 'Breakdown')],
+        [('count', 'Counters'), ('agenda', "Today's Agenda"),
+         ('breakdown', 'Breakdown'), ('calendar', 'Calendar')],
         string='Type', default='count', required=True,
         help="Counters: one line per named filter, showing how many records match.\n"
              "Today's Agenda: the records of this model happening today.\n"
-             "Breakdown: how many records fall into each value of a field.",
+             "Breakdown: how many records fall into each value of a field.\n"
+             "Calendar: a real calendar grid, for a tile you read like a diary.",
     )
     icon = fields.Char(
         string='Icon', default='fa-list',
@@ -105,6 +109,15 @@ class MwdTile(models.Model):
         help="The field that says when a record happens.")
     agenda_limit = fields.Integer(string='Maximum Entries', default=10)
 
+    # -- calendar tiles --
+    # The date field is shared with agenda tiles: both answer "when does this
+    # record happen", and a tile is only ever one type at a time.
+    calendar_mode = fields.Selection(
+        [('day', 'Day'), ('week', 'Week'), ('month', 'Month')],
+        string='Calendar Scale', default='week', required=True,
+        help="Which span the calendar opens on. The reader can still switch "
+             "scale from the tile itself.")
+
     # -- breakdown tiles --
     group_field_id = fields.Many2one(
         'ir.model.fields', string='Group By', ondelete='set null',
@@ -135,6 +148,11 @@ class MwdTile(models.Model):
     bar_color_threshold = fields.Integer(string='Bar Threshold', default=0)
     bar_color = fields.Selection(
         COLORS, string='Bar Highlight Colour', default='warning', required=True)
+
+    broken_reason = fields.Char(
+        string='Problem', compute='_compute_broken_reason',
+        help="Filled in when this tile can no longer be counted, usually "
+             "because a field it refers to disappeared in an upgrade.")
 
     # ------------------------------------------------------------------
     # Consistency
@@ -177,8 +195,8 @@ class MwdTile(models.Model):
     @api.constrains('tile_type', 'date_field_id', 'group_field_id')
     def _check_required_fields(self):
         for tile in self:
-            if tile.tile_type == 'agenda' and not tile.date_field_id:
-                raise ValidationError(_("An agenda tile needs a date field."))
+            if tile.tile_type in ('agenda', 'calendar') and not tile.date_field_id:
+                raise ValidationError(_("An %s tile needs a date field.", tile.tile_type))
             if tile.tile_type == 'breakdown' and not tile.group_field_id:
                 raise ValidationError(_("A breakdown tile needs a field to group by."))
 
@@ -318,6 +336,8 @@ class MwdTile(models.Model):
                 data.update(self._get_agenda_data())
             elif self.tile_type == 'breakdown':
                 data.update(self._get_breakdown_data())
+            elif self.tile_type == 'calendar':
+                data.update(self._get_calendar_data())
         except (AccessError, UserError) as error:
             data['error'] = str(error)
         except Exception as error:  # noqa: BLE001 - one bad tile must not blank the page
@@ -422,6 +442,41 @@ class MwdTile(models.Model):
             'truncated': total > len(entries),
         }
 
+    def _get_calendar_data(self):
+        """Everything the browser needs to render a real calendar for this tile.
+
+        The arch is synthesised here rather than read from the model's own
+        calendar view, for two reasons. The tile's date field is the one its
+        owner picked, which is not necessarily the one the model's view uses;
+        and most models have no calendar view at all, while Odoo's generated
+        fallback insists on both a start and an end date and raises when a
+        model has only one.
+
+        It is deliberately read-only. A dashboard is for looking at, and a
+        drag on a tile the size of a postcard is far likelier to be a slip
+        than an intention.
+        """
+        self.ensure_one()
+        model = self._record_model()
+        field_name = self.date_field_id.name
+        if field_name not in model._fields:
+            raise UserError(_("The field %s no longer exists.", field_name))
+        arch = (
+            '<calendar date_start="%s" mode="%s" string="%s"'
+            ' create="0" edit="0" delete="0" quick_create="0"'
+            ' show_date_picker="0" event_limit="3"/>'
+        ) % (
+            escape(field_name),
+            escape(self.calendar_mode or 'week'),
+            escape(self.name or ''),
+        )
+        # The domain is resolved here, as everywhere else, so the browser is
+        # handed a plain list and never evaluates a stored expression.
+        return {
+            'arch': arch,
+            'domain': self._full_domain(),
+        }
+
     def _get_breakdown_data(self):
         """How many records fall into each value of the grouping field."""
         self.ensure_one()
@@ -491,6 +546,76 @@ class MwdTile(models.Model):
         if isinstance(value, (datetime.date, datetime.datetime)):
             return fields.Date.to_string(value)
         return str(value)
+
+    # ------------------------------------------------------------------
+    # Health check
+    # ------------------------------------------------------------------
+
+    @api.depends('tile_type', 'allowed_model_id', 'base_domain', 'line_ids.domain',
+                 'date_field_id', 'group_field_id')
+    def _compute_broken_reason(self):
+        for tile in self:
+            tile.broken_reason = tile._broken_reason() or False
+
+    def _broken_reason(self):
+        """Why this tile can no longer be counted, or False when it is fine.
+
+        Checks the shape of the tile rather than running it: validating the
+        domains costs nothing, while counting every line of every tile on the
+        database would be a report nobody dares run.
+        """
+        self.ensure_one()
+        model = self.env.get(self.model_name)
+        if model is None:
+            return _("The model %s is no longer installed.", self.model_name)
+        for field in (self.date_field_id, self.group_field_id):
+            if field and field.name not in model._fields:
+                return _("The field %s no longer exists.", field.name)
+        if self.tile_type in ('agenda', 'calendar') and not self.date_field_id:
+            return _("This tile needs a date field and has none.")
+        if self.tile_type == 'breakdown' and not self.group_field_id:
+            return _("This tile needs a field to group by and has none.")
+        candidates = [(_("Base filter"), self.base_domain)]
+        candidates += [(line.name, line.domain) for line in self.line_ids]
+        for label, domain in candidates:
+            try:
+                self._validate_domain(domain)
+            except (UserError, ValidationError) as error:
+                return '%s: %s' % (label, error.args[0] if error.args else error)
+        return False
+
+    @api.model
+    def action_check_tiles(self):
+        """List every tile that would fail, or say that none would.
+
+        Broken tiles already report themselves on the dashboard, but only to
+        whoever opens it. This is the same information at the moment an
+        administrator wants it: just after an upgrade.
+        """
+        tiles = self.sudo().search([])
+        broken = tiles.filtered(lambda tile: tile._broken_reason())
+        if not broken:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'type': 'success',
+                    'message': _("All %s tiles are fine.", len(tiles)),
+                    'next': {'type': 'ir.actions.act_window_close'},
+                },
+            }
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _("Broken Tiles"),
+            'res_model': 'mwd.tile',
+            'domain': [('id', 'in', broken.ids)],
+            'views': [
+                [self.env.ref('my_work_day.mwd_tile_view_list_broken').id, 'list'],
+                [False, 'form'],
+            ],
+            'target': 'current',
+            'context': {'create': False},
+        }
 
     # ------------------------------------------------------------------
     # Click-through

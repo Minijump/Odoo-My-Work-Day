@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-name="my_work_day.SystrayItem">
+        <div class="o_mwd_systray o_mail_systray_item">
+            <button class="btn btn-link o_nav_entry text-reset"
+                    t-att-disabled="state.busy"
+                    t-on-click="onClick"
+                    title="My Work Day">
+                <i class="fa fa-lg fa-coffee" role="img" aria-label="My Work Day"/>
+            </button>
+        </div>
+    </t>
+
+</templates>

@@ -60,6 +60,24 @@
                         </button>
                     </div>
 
+                    <!--
+                        Nothing waiting. The tiles are still one click away,
+                        because "all clear" is only believable if you can
+                        check what was looked at.
+                    -->
+                    <div t-elif="allClear and !state.showClearedTiles"
+                         class="mwd_empty text-center py-5">
+                        <i class="fa fa-check-circle fa-3x text-success mb-3 d-block"/>
+                        <h3>All clear</h3>
+                        <p class="text-muted">
+                            Nothing on your dashboard is waiting for you right now.
+                        </p>
+                        <button class="btn btn-link"
+                                t-on-click="() => this.state.showClearedTiles = true">
+                            Show my tiles anyway
+                        </button>
+                    </div>
+
                     <div t-else="" class="mwd_grid" t-att-style="gridStyle">
                         <MwdTile t-foreach="tiles" t-as="tile" t-key="tile.id"
                                  tile="tile"

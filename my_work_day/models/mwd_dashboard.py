@@ -2,6 +2,12 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.tools.translate import _
 
+# How often every dashboard on this database reloads its counters, in seconds.
+# It lives in a system parameter rather than on the dashboard because the
+# number decides the query load of the whole database, which is not something
+# each user should be choosing for themselves.
+REFRESH_INTERVAL_PARAM = 'my_work_day.refresh_interval'
+
 
 class MwdDashboard(models.Model):
     _name = 'mwd.dashboard'
@@ -22,14 +28,6 @@ class MwdDashboard(models.Model):
         string='Columns', default='4', required=True,
         help="How many tile columns to use on a wide screen. "
              "Narrow screens always stack to a single column.",
-    )
-    refresh_interval = fields.Selection(
-        [('0', 'Off'), ('120', 'Every 2 minutes'), ('300', 'Every 5 minutes'),
-         ('900', 'Every 15 minutes')],
-        string='Auto Refresh', default='0', required=True,
-        help="Reload the counters on a timer. Refreshing pauses while the "
-             "browser tab is in the background, so a dashboard left open "
-             "overnight costs nothing.",
     )
     show_apps = fields.Boolean(
         string='Show My Apps', default=True,
@@ -216,7 +214,7 @@ class MwdDashboard(models.Model):
             'id': dashboard.id,
             'name': dashboard.name,
             'column_count': int(dashboard.column_count),
-            'refresh_interval': int(dashboard.refresh_interval),
+            'refresh_interval': self._refresh_interval(),
             'show_apps': dashboard.show_apps,
             'is_owner': dashboard.user_id.id == self.env.uid,
             'can_edit': (
@@ -227,6 +225,16 @@ class MwdDashboard(models.Model):
             'app_menu_ids': self.env.user.mwd_favorite_menu_ids.ids,
             'tiles': [tile._get_tile_data() for tile in dashboard.tile_ids],
         }
+
+    @api.model
+    def _refresh_interval(self):
+        """Seconds between automatic reloads, or 0 when they are switched off."""
+        value = self.env['ir.config_parameter'].sudo().get_param(REFRESH_INTERVAL_PARAM)
+        try:
+            return max(0, int(value or 0))
+        except ValueError:
+            # A hand-edited parameter should not take the dashboard down with it.
+            return 0
 
     @api.model
     def _is_home_action(self):

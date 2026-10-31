@@ -37,6 +37,18 @@
         </field>
     </record>
 
+    <!--
+        Runs the health check and returns either a notification or a list of
+        the tiles that would fail. The method decides which, so there is no
+        second action to keep in step.
+    -->
+    <record id="action_mwd_tile_check" model="ir.actions.server">
+        <field name="name">Check Tiles</field>
+        <field name="model_id" ref="my_work_day.model_mwd_tile"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_check_tiles()</field>
+    </record>
+
     <record id="action_mwd_allowed_model" model="ir.actions.act_window">
         <field name="name">Selectable Models</field>
         <field name="res_model">mwd.allowed.model</field>
