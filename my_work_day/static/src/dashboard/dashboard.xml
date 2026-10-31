@@ -4,17 +4,23 @@
     <t t-name="my_work_day.Dashboard">
         <div class="o_action mwd_dashboard d-flex flex-column h-100">
 
-            <div class="mwd_header px-3 py-2">
-              <div class="mwd_header_top d-flex flex-wrap align-items-center gap-2">
-                <h1 class="mwd_title mb-0 me-auto">
-                    <t t-esc="state.data?.name or 'My Work Day'"/>
-                </h1>
+            <!--
+                One line: the app shortcuts on the left, the controls on the
+                right. The dashboard name is not repeated here: the navbar
+                and the browser tab already say where you are, and the row of
+                shortcuts is worth more than a title.
+            -->
+            <div class="mwd_header d-flex flex-wrap align-items-center gap-2 px-3 py-2">
+                <MwdAppsRow t-if="state.data?.show_apps"
+                            menuIds="state.data.app_menu_ids"
+                            onChanged.bind="load"/>
+                <div class="ms-auto"/>
                 <small class="text-muted d-none d-md-inline" t-esc="refreshedLabel"/>
                 <button class="btn btn-sm btn-light" t-on-click="onRefresh"
                         title="Refresh now">
                     <i class="fa fa-refresh" t-att-class="{ 'fa-spin': state.loading }"/>
                 </button>
-                <t t-if="state.data?.is_owner">
+                <t t-if="state.data?.can_edit">
                     <button class="btn btn-sm btn-light" t-on-click="onAddTile">
                         <i class="fa fa-plus me-1"/><span class="d-none d-sm-inline">Add Tile</span>
                     </button>
@@ -29,16 +35,6 @@
                         t-att-title="state.data?.is_home ? 'This is your landing page' : 'Make this your landing page'">
                     <i class="fa fa-home"/>
                 </button>
-              </div>
-
-              <!--
-                  The app shortcuts live in the header rather than in the
-                  scrolling area, so they stay reachable once the page is
-                  scrolled down past the tiles.
-              -->
-              <MwdAppsRow t-if="state.data?.show_apps"
-                          menuIds="state.data.app_menu_ids"
-                          onChanged.bind="load"/>
             </div>
 
             <div class="o_content mwd_content flex-grow-1 overflow-auto px-3 pb-4">
@@ -58,7 +54,7 @@
                             Add a tile to count the work waiting for you, such as draft
                             orders or invoices to approve.
                         </p>
-                        <button t-if="state.data.is_owner" class="btn btn-primary"
+                        <button t-if="state.data.can_edit" class="btn btn-primary"
                                 t-on-click="onAddTile">
                             <i class="fa fa-plus me-1"/>Add your first tile
                         </button>
@@ -82,9 +78,9 @@
     </t>
 
     <t t-name="my_work_day.AppsRow">
-        <div class="mwd_apps d-flex flex-wrap align-items-center gap-2 mt-2">
+        <div class="mwd_apps d-flex flex-wrap align-items-center gap-2">
             <t t-foreach="apps" t-as="app" t-key="app.id">
-                <button class="mwd_app btn btn-light d-flex align-items-center gap-2"
+                <button class="mwd_app btn btn-sm btn-light d-flex align-items-center gap-2"
                         t-on-click="() => this.onOpenApp(app)">
                     <img t-if="app.webIconData" class="mwd_app_icon" t-att-src="app.webIconData"
                          t-att-alt="app.name"/>

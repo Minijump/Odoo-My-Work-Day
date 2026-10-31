@@ -62,7 +62,8 @@
                 <!-- Breakdown bars -->
                 <t t-elif="tile.type === 'breakdown'">
                     <t t-foreach="tile.bars" t-as="bar" t-key="bar_index">
-                        <div class="mwd_bar_row" t-on-click="() => this.props.onOpenGroup(tile, bar)">
+                        <div class="mwd_bar_row" t-att-class="colorClass(bar.color)"
+                             t-on-click="() => this.props.onOpenGroup(tile, bar)">
                             <div class="d-flex align-items-center gap-2">
                                 <span class="mwd_line_name text-truncate" t-esc="bar.label"/>
                                 <span class="mwd_line_count ms-auto" t-esc="bar.count"/>

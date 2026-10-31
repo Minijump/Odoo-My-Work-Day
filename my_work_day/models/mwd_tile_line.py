@@ -1,15 +1,7 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 
-from .mwd_tile import COLORS
-
-CONDITIONS = [
-    ('none', 'Never'),
-    ('gt', 'More than'),
-    ('ge', 'At least'),
-    ('lt', 'Fewer than'),
-    ('eq', 'Exactly'),
-]
+from .mwd_tile import COLORS, CONDITIONS, color_for
 
 
 class MwdTileLine(models.Model):
@@ -52,12 +44,4 @@ class MwdTileLine(models.Model):
     def _line_color(self, count):
         """The colour this line should take for a given count."""
         self.ensure_one()
-        condition = self.color_condition
-        threshold = self.color_threshold
-        triggered = (
-            (condition == 'gt' and count > threshold)
-            or (condition == 'ge' and count >= threshold)
-            or (condition == 'lt' and count < threshold)
-            or (condition == 'eq' and count == threshold)
-        )
-        return self.color if triggered else 'muted'
+        return color_for(self.color_condition, self.color_threshold, self.color, count)

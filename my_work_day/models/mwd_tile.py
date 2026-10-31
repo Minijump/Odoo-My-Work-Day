@@ -20,6 +20,29 @@ COLORS = [
     ('danger', 'Red'),
 ]
 
+CONDITIONS = [
+    ('none', 'Never'),
+    ('gt', 'More than'),
+    ('ge', 'At least'),
+    ('lt', 'Fewer than'),
+    ('eq', 'Exactly'),
+]
+
+
+def color_for(condition, threshold, color, count):
+    """The colour a count should take, or 'muted' when the rule does not fire.
+
+    Shared by counter lines and breakdown bars so that a highlight means the
+    same thing wherever it appears.
+    """
+    triggered = (
+        (condition == 'gt' and count > threshold)
+        or (condition == 'ge' and count >= threshold)
+        or (condition == 'lt' and count < threshold)
+        or (condition == 'eq' and count == threshold)
+    )
+    return color if triggered else 'muted'
+
 
 class MwdTile(models.Model):
     _name = 'mwd.tile'
@@ -97,6 +120,21 @@ class MwdTile(models.Model):
         help="How to bucket a date field. Grouping by a raw date would give one "
              "bar per timestamp, so a granularity is always needed.")
     group_limit = fields.Integer(string='Maximum Bars', default=8)
+    group_order = fields.Selection(
+        [('count desc', 'Largest first'), ('count asc', 'Smallest first'),
+         ('value asc', 'By value, ascending'), ('value desc', 'By value, descending')],
+        string='Sort Bars By', default='count desc', required=True,
+        help="Largest first answers 'where is the work piling up'. Sorting by "
+             "value is what you want for a date breakdown, where the bars mean "
+             "more in chronological order than in size order.",
+    )
+    bar_color_condition = fields.Selection(
+        CONDITIONS, string='Highlight Bars When', default='none', required=True,
+        help="Colour a bar once its count crosses a threshold, the same way a "
+             "counter line is highlighted.")
+    bar_color_threshold = fields.Integer(string='Bar Threshold', default=0)
+    bar_color = fields.Selection(
+        COLORS, string='Bar Highlight Colour', default='warning', required=True)
 
     # ------------------------------------------------------------------
     # Consistency
@@ -401,8 +439,13 @@ class MwdTile(models.Model):
 
         domain = self._full_domain()
         limit = max(1, self.group_limit or 8)
+        # "value asc" sorts on the grouped field itself, which is what makes a
+        # date breakdown read chronologically. The limit still applies, so a
+        # value sort shows the first N values rather than the N biggest bars.
+        order_by, _space, direction = (self.group_order or 'count desc').partition(' ')
+        order = '%s %s' % ('__count' if order_by == 'count' else group_spec, direction)
         groups = model.formatted_read_group(
-            domain, [group_spec], ['__count'], order='__count desc', limit=limit)
+            domain, [group_spec], ['__count'], order=order, limit=limit)
 
         # formatted_read_group hands back the stored value of a selection
         # field, not its label, so "sale" would show instead of "Sales Order".
@@ -416,11 +459,19 @@ class MwdTile(models.Model):
         bars = []
         for group in groups:
             value = group.get(group_spec)
+            count = group.get('__count', 0)
             bars.append({
                 'label': selection_labels.get(value) or self._format_group_value(value),
-                'count': group.get('__count', 0),
+                'count': count,
                 'domain': group.get('__extra_domain') or [],
+                'color': color_for(
+                    self.bar_color_condition, self.bar_color_threshold,
+                    self.bar_color, count),
             })
+        # The bar lengths are relative to the biggest bar on show, not to the
+        # biggest overall: with a "smallest first" sort the largest value may
+        # not even be in the list, and scaling to it would leave every bar a
+        # sliver.
         biggest = max((bar['count'] for bar in bars), default=0)
         for bar in bars:
             bar['ratio'] = round(100.0 * bar['count'] / biggest, 1) if biggest else 0

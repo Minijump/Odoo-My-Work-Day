@@ -1,6 +1,9 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_mwd_allowed_model_user,mwd.allowed.model.user,model_mwd_allowed_model,base.group_user,1,0,0,0
+access_mwd_allowed_model_reader,mwd.allowed.model.reader,model_mwd_allowed_model,my_work_day.group_my_work_day_reader,1,0,0,0
 access_mwd_allowed_model_manager,mwd.allowed.model.manager,model_mwd_allowed_model,my_work_day.group_my_work_day_manager,1,1,1,1
-access_mwd_dashboard_user,mwd.dashboard.user,model_mwd_dashboard,base.group_user,1,1,1,1
-access_mwd_tile_user,mwd.tile.user,model_mwd_tile,base.group_user,1,1,1,1
-access_mwd_tile_line_user,mwd.tile.line.user,model_mwd_tile_line,base.group_user,1,1,1,1
+access_mwd_dashboard_reader,mwd.dashboard.reader,model_mwd_dashboard,my_work_day.group_my_work_day_reader,1,0,0,0
+access_mwd_dashboard_editor,mwd.dashboard.editor,model_mwd_dashboard,my_work_day.group_my_work_day_editor,1,1,1,1
+access_mwd_tile_reader,mwd.tile.reader,model_mwd_tile,my_work_day.group_my_work_day_reader,1,0,0,0
+access_mwd_tile_editor,mwd.tile.editor,model_mwd_tile,my_work_day.group_my_work_day_editor,1,1,1,1
+access_mwd_tile_line_reader,mwd.tile.line.reader,model_mwd_tile_line,my_work_day.group_my_work_day_reader,1,0,0,0
+access_mwd_tile_line_editor,mwd.tile.line.editor,model_mwd_tile_line,my_work_day.group_my_work_day_editor,1,1,1,1

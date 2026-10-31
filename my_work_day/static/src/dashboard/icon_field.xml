@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-name="my_work_day.IconField">
+        <button type="button" class="mwd_icon_button btn btn-light d-inline-flex align-items-center gap-2"
+                t-att-disabled="props.readonly"
+                t-on-click="onOpen">
+            <i class="fa fa-fw fa-lg" t-att-class="icon"/>
+            <span class="text-muted small" t-esc="icon"/>
+        </button>
+    </t>
+
+    <t t-name="my_work_day.IconDialog">
+        <Dialog title="'Pick an icon'" size="'lg'">
+            <input type="text" class="form-control mb-3"
+                   placeholder="Search all icons, e.g. cart, bell, chart"
+                   t-model="state.search"/>
+
+            <div t-if="!isSearching" class="text-muted small mb-2">
+                Common choices. Type above to search all
+                <t t-esc="totalIcons"/> icons.
+            </div>
+
+            <div t-if="!icons.length" class="text-muted text-center py-4">
+                No icon matches that.
+            </div>
+
+            <div t-else="" class="mwd_icon_grid">
+                <button t-foreach="icons" t-as="icon" t-key="icon"
+                        type="button" class="mwd_icon_choice"
+                        t-att-class="{ 'mwd_icon_chosen': icon === props.current }"
+                        t-att-title="label(icon)"
+                        t-on-click="() => this.onPick(icon)">
+                    <i class="fa fa-lg" t-att-class="icon"/>
+                </button>
+            </div>
+        </Dialog>
+    </t>
+
+</templates>

@@ -28,7 +28,7 @@
                                    invisible="not model_name"/>
                         </group>
                         <group string="How it looks">
-                            <field name="icon" placeholder="fa-shopping-cart"/>
+                            <field name="icon" widget="mwd_icon"/>
                             <field name="width"/>
                             <field name="height"/>
                             <field name="is_shared"/>
@@ -108,10 +108,20 @@
                                        invisible="group_field_ttype not in ['date', 'datetime']"
                                        required="group_field_ttype in ['date', 'datetime']"/>
                                 <field name="group_limit"/>
+                                <field name="group_order"/>
+                            </group>
+                            <group>
+                                <group string="Highlight">
+                                    <field name="bar_color_condition"/>
+                                    <field name="bar_color_threshold"
+                                           invisible="bar_color_condition == 'none'"/>
+                                    <field name="bar_color"
+                                           invisible="bar_color_condition == 'none'"/>
+                                </group>
                             </group>
                             <div class="text-muted">
                                 Counts the records in each value of the chosen field and
-                                draws them as bars, largest first.
+                                draws them as bars.
                             </div>
                         </page>
                     </notebook>

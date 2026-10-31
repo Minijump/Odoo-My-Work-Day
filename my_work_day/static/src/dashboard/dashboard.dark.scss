@@ -3,10 +3,10 @@
 // No CSS hacks, variable overrides only.
 //
 // Everything else already follows the theme, because the stylesheet is built
-// on Sass variables that the dark bundle recompiles. The one thing that does
-// not carry over is the highlight shade: darkening a colour is right against a
-// white card and wrong against a dark one, where it has to be lightened to
-// stay legible.
+// on Sass variables that the dark bundle recompiles. Two things do not carry
+// over. The highlight shade has to be lightened rather than darkened, since it
+// now sits against a dark card. And the row tint needs more alpha: the same
+// 10% that reads clearly over white is nearly invisible over a dark surface.
 
 .mwd_dashboard {
     @each $name, $color in (
@@ -15,8 +15,10 @@
         "warning": $warning,
         "danger": $danger,
     ) {
-        .mwd_line.mwd_color_#{$name} {
+        .mwd_color_#{$name} {
             --mwd-accent-text: #{lighten($color, 12%)};
+            --mwd-accent-bg: #{rgba($color, 0.18)};
+            --mwd-accent-bg-hover: #{rgba($color, 0.28)};
         }
     }
 }

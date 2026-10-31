@@ -35,6 +35,11 @@ class MwdDashboard(models.Model):
         string='Show My Apps', default=True,
         help="Show a row of shortcuts to your favourite apps at the top of the dashboard.",
     )
+    starter_tiles_done = fields.Boolean(
+        string='Starter Tiles Offered', default=False, copy=False,
+        help="Set once this dashboard has been offered its starter tiles, so emptying "
+             "it does not bring them back.",
+    )
 
     @api.depends('tile_ids')
     def _compute_tile_count(self):
@@ -51,9 +56,40 @@ class MwdDashboard(models.Model):
         dashboard = self.search([('user_id', '=', self.env.uid)], limit=1)
         if dashboard:
             return dashboard
-        dashboard = self.create({'user_id': self.env.uid})
-        dashboard._create_starter_tiles()
+        # A Reader may not create records, but everyone has to be able to open
+        # their own dashboard, so the first one is made for them. Only the
+        # writing is elevated: which models may appear on it is still decided
+        # by what this user, not the superuser, is allowed to read.
+        created = self.sudo().create({'user_id': self.env.uid})
+        # Back to the user's own environment before filling it: _offer_starter_tiles
+        # asks what this user may read, and sudo would answer "everything".
+        dashboard = self.browse(created.id)
+        dashboard._offer_starter_tiles()
         return dashboard
+
+    def _offer_starter_tiles(self):
+        """Fill an empty dashboard once, the first time there is anything to fill it with.
+
+        This cannot happen only at creation. The selectable-model list starts
+        empty, and an administrator usually opens the dashboard before getting
+        round to filling that list -- which would leave them with an empty
+        dashboard for good. So the offer is retried until it has something to
+        offer, and the flag is set only once it does, which is also what stops
+        a user who deletes every tile from finding them back the next morning.
+        """
+        self.ensure_one()
+        if self.starter_tiles_done or self.tile_ids:
+            return False
+        available = self.env['mwd.allowed.model']._search_available()
+        if not available:
+            return False
+        if not self.sudo()._create_starter_tiles(available):
+            # Models are selectable, but none of them is one this module has a
+            # suggestion for. Leave the flag alone and try again next time, in
+            # case the administrator adds Sales tomorrow.
+            return False
+        self.sudo().starter_tiles_done = True
+        return True
 
     def _starter_tile_blueprints(self):
         """Tiles worth offering on a brand new dashboard.
@@ -118,13 +154,16 @@ class MwdDashboard(models.Model):
             },
         ]
 
-    def _create_starter_tiles(self):
-        """Populate an empty dashboard so the user never meets a blank page."""
+    def _create_starter_tiles(self, available):
+        """Populate an empty dashboard so the user never meets a blank page.
+
+        ``available`` is passed in rather than looked up here because this runs
+        with sudo: asking the superuser which models are available would answer
+        "all of them" and quietly put a tile on a model the owner cannot read.
+        """
         self.ensure_one()
-        by_model = {
-            allowed.model_name: allowed
-            for allowed in self.env['mwd.allowed.model']._search_available()
-        }
+        by_model = {allowed.model_name: allowed for allowed in available}
+        created = 0
         sequence = 0
         for blueprint in self._starter_tile_blueprints():
             allowed = by_model.get(blueprint['model'])
@@ -150,7 +189,8 @@ class MwdDashboard(models.Model):
                     in enumerate(blueprint['lines'])
                 ],
             })
-        return True
+            created += 1
+        return created
 
     # ------------------------------------------------------------------
     # Client payload
@@ -170,6 +210,7 @@ class MwdDashboard(models.Model):
             dashboard.check_access('read')
         else:
             dashboard = self._get_or_create_for_user()
+            dashboard._offer_starter_tiles()
 
         return {
             'id': dashboard.id,
@@ -178,6 +219,10 @@ class MwdDashboard(models.Model):
             'refresh_interval': int(dashboard.refresh_interval),
             'show_apps': dashboard.show_apps,
             'is_owner': dashboard.user_id.id == self.env.uid,
+            'can_edit': (
+                dashboard.user_id.id == self.env.uid
+                and self.env.user.has_group('my_work_day.group_my_work_day_editor')
+            ),
             'is_home': self._is_home_action(),
             'app_menu_ids': self.env.user.mwd_favorite_menu_ids.ids,
             'tiles': [tile._get_tile_data() for tile in dashboard.tile_ids],

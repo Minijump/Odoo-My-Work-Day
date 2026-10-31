@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+from odoo.addons.my_work_day.models.mwd_dashboard import MwdDashboard
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
@@ -10,12 +13,20 @@ class TestMyWorkDay(TransactionCase):
         super().setUpClass()
 
         cls.group_user = cls.env.ref('base.group_user')
+        # Being an internal user only makes you a Reader. Building tiles is the
+        # Editor level, so the two users who do the building are given it here.
+        cls.group_editor = cls.env.ref('my_work_day.group_my_work_day_editor')
+        cls.group_reader = cls.env.ref('my_work_day.group_my_work_day_reader')
         cls.alice = cls.env['res.users'].create({
             'name': 'Alice', 'login': 'mwd_alice',
-            'group_ids': [(6, 0, [cls.group_user.id])],
+            'group_ids': [(6, 0, [cls.group_user.id, cls.group_editor.id])],
         })
         cls.bob = cls.env['res.users'].create({
             'name': 'Bob', 'login': 'mwd_bob',
+            'group_ids': [(6, 0, [cls.group_user.id, cls.group_editor.id])],
+        })
+        cls.reader = cls.env['res.users'].create({
+            'name': 'Rita', 'login': 'mwd_rita',
             'group_ids': [(6, 0, [cls.group_user.id])],
         })
 
@@ -261,6 +272,7 @@ class TestMyWorkDay(TransactionCase):
         ])
         stale = tile.line_ids.filtered(lambda line: line.name == 'Stale')
         # Write past the validation, the way a module upgrade would leave things.
+        self.env.flush_all()
         self.env.cr.execute(
             "UPDATE mwd_tile_line SET domain = %s WHERE id = %s",
             ("[('field_that_vanished', '=', 1)]", stale.id))
@@ -413,3 +425,231 @@ class TestMyWorkDay(TransactionCase):
         self.env.invalidate_all()
         data = dashboard_model.get_dashboard_data()
         self.assertTrue(data['tiles'])
+
+    # ------------------------------------------------------------------
+    # Access levels
+    # ------------------------------------------------------------------
+
+    def test_a_reader_can_open_a_dashboard_without_being_able_to_create_one(self):
+        """Reading your own dashboard is part of being an internal user."""
+        data = self.env['mwd.dashboard'].with_user(self.reader).get_dashboard_data()
+        self.assertTrue(data['id'])
+        self.assertTrue(data['is_owner'])
+        self.assertFalse(data['can_edit'], "a Reader must not be offered the edit controls")
+
+    def test_a_reader_cannot_build_a_tile(self):
+        dashboard = self._dashboard_for(self.reader)
+        with self.assertRaises(AccessError):
+            self.env['mwd.tile'].with_user(self.reader).create({
+                'dashboard_id': dashboard.id,
+                'name': 'Not mine to make',
+                'allowed_model_id': self.allowed_partner.id,
+            })
+
+    def test_a_reader_cannot_edit_their_own_tile(self):
+        """The dashboard may be theirs; changing it is still not their level."""
+        dashboard = self._dashboard_for(self.reader)
+        tile = self.env['mwd.tile'].create({
+            'dashboard_id': dashboard.id,
+            'name': 'Made for them',
+            'allowed_model_id': self.allowed_partner.id,
+            'line_ids': [(0, 0, {'name': 'All', 'domain': "[]"})],
+        })
+        # They can read it...
+        self.assertEqual(tile.with_user(self.reader).name, 'Made for them')
+        # ...and that is all.
+        with self.assertRaises(AccessError):
+            tile.with_user(self.reader).write({'name': 'changed'})
+        with self.assertRaises(AccessError):
+            tile.with_user(self.reader).unlink()
+
+    def test_an_editor_can_edit_only_their_own(self):
+        alice_tile = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        with self.assertRaises(AccessError):
+            alice_tile.with_user(self.bob).write({'name': 'hijacked'})
+        alice_tile.with_user(self.alice).write({'name': 'fine'})
+        self.assertEqual(alice_tile.name, 'fine')
+
+    # ------------------------------------------------------------------
+    # Breakdown sorting and bar colours
+    # ------------------------------------------------------------------
+
+    def _breakdown_tile(self, user, **values):
+        dashboard = self._dashboard_for(user)
+        field = self.env['ir.model.fields']._get('res.partner', 'is_company')
+        return self.env['mwd.tile'].with_user(user).create({
+            'dashboard_id': dashboard.id,
+            'name': 'By kind',
+            'tile_type': 'breakdown',
+            'allowed_model_id': self.allowed_partner.id,
+            'group_field_id': field.id,
+            **values,
+        })
+
+    def test_breakdown_sort_order_reverses_the_bars(self):
+        biggest = self._breakdown_tile(self.alice, group_order='count desc')
+        smallest = self._breakdown_tile(self.alice, group_order='count asc')
+
+        descending = [bar['count'] for bar in biggest._get_tile_data()['bars']]
+        ascending = [bar['count'] for bar in smallest._get_tile_data()['bars']]
+
+        self.assertEqual(descending, sorted(descending, reverse=True))
+        self.assertEqual(ascending, sorted(ascending))
+        self.assertEqual(sorted(descending), sorted(ascending),
+                         "the same bars, only the order differs")
+
+    def test_breakdown_bars_scale_to_the_biggest_bar_on_show(self):
+        """With a limit and an ascending sort, the top bar must still be full."""
+        tile = self._breakdown_tile(self.alice, group_order='count asc', group_limit=1)
+        bars = tile._get_tile_data()['bars']
+        self.assertEqual(len(bars), 1)
+        self.assertEqual(bars[0]['ratio'], 100)
+
+    def test_breakdown_bar_colour_rule(self):
+        tile = self._breakdown_tile(self.alice)
+        bars = tile._get_tile_data()['bars']
+        self.assertTrue(all(bar['color'] == 'muted' for bar in bars),
+                        "no rule set, so nothing is highlighted")
+
+        smallest = min(bar['count'] for bar in bars)
+        tile.write({
+            'bar_color_condition': 'gt',
+            'bar_color_threshold': smallest,
+            'bar_color': 'danger',
+        })
+        for bar in tile._get_tile_data()['bars']:
+            expected = 'danger' if bar['count'] > smallest else 'muted'
+            self.assertEqual(bar['color'], expected)
+
+    # ------------------------------------------------------------------
+    # Surviving a field that disappears
+    # ------------------------------------------------------------------
+
+    def _blank_tile_column(self, tile, column):
+        """Point a tile at a field that is not there, the way an uninstall would.
+
+        The flush matters: records created in this test are still sitting in
+        the ORM's buffer, and writing raw SQL before they are flushed means the
+        flush overwrites it a moment later.
+        """
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE mwd_tile SET {} = NULL WHERE id = %s".format(column), (tile.id,))
+        self.env.invalidate_all()
+
+    def test_a_broken_agenda_tile_does_not_take_the_dashboard_with_it(self):
+        dashboard = self._dashboard_for(self.alice)
+        good = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        date_field = self.env['ir.model.fields']._get('res.partner', 'create_date')
+        broken = self.env['mwd.tile'].with_user(self.alice).create({
+            'dashboard_id': dashboard.id,
+            'name': 'Agenda', 'tile_type': 'agenda',
+            'allowed_model_id': self.allowed_partner.id,
+            'date_field_id': date_field.id,
+        })
+        self._blank_tile_column(broken, 'date_field_id')
+
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data(dashboard.id)
+        by_id = {tile['id']: tile for tile in data['tiles']}
+        self.assertTrue(by_id[broken.id]['error'], "the broken tile reports its own failure")
+        self.assertFalse(by_id[good.id]['error'], "every other tile still works")
+
+    def test_a_broken_breakdown_tile_does_not_take_the_dashboard_with_it(self):
+        dashboard = self._dashboard_for(self.alice)
+        good = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        broken = self._breakdown_tile(self.alice)
+        self._blank_tile_column(broken, 'group_field_id')
+
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data(dashboard.id)
+        by_id = {tile['id']: tile for tile in data['tiles']}
+        self.assertTrue(by_id[broken.id]['error'])
+        self.assertFalse(by_id[good.id]['error'])
+
+    def test_a_tile_whose_model_is_gone_reports_itself_and_nothing_more(self):
+        dashboard = self._dashboard_for(self.alice)
+        good = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+
+        # The broken tile needs a selectable model of its own: the two tiles
+        # would otherwise share one record, and breaking it would break both.
+        allowed_currency = self.env['mwd.allowed.model'].create({
+            'model_id': self.env['ir.model']._get('res.currency').id,
+        })
+        broken = self.env['mwd.tile'].with_user(self.alice).create({
+            'dashboard_id': dashboard.id,
+            'name': 'Vanished model',
+            'allowed_model_id': allowed_currency.id,
+            'line_ids': [(0, 0, {'name': 'All', 'domain': "[]"})],
+        })
+        # model_name is stored, so overwriting it is what uninstalling the
+        # module that provided the model would effectively leave behind.
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE mwd_allowed_model SET model_name = 'no.such.model' WHERE id = %s",
+            (allowed_currency.id,))
+        self.env.invalidate_all()
+
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data(dashboard.id)
+        by_id = {tile['id']: tile for tile in data['tiles']}
+        self.assertTrue(by_id[broken.id]['error'])
+        self.assertFalse(by_id[good.id]['error'])
+
+    # The shipped blueprints are for Sales, Project and friends, none of which
+    # exist on a bare database. Standing in a partner blueprint lets these
+    # tests check the offering logic itself wherever they run.
+    PARTNER_BLUEPRINT = [{
+        'model': 'res.partner',
+        'name': 'Contacts',
+        'icon': 'fa-users',
+        'lines': [('Companies', "[('is_company', '=', True)]", 'none', 0, 'muted')],
+    }]
+
+    def _with_partner_blueprint(self):
+        return patch.object(
+            MwdDashboard, '_starter_tile_blueprints',
+            lambda dashboard: self.PARTNER_BLUEPRINT)
+
+    def test_starter_tiles_wait_until_a_model_is_selectable(self):
+        """An empty whitelist at first visit must not mean an empty dashboard for good."""
+        charlie = self.env['res.users'].create({
+            'name': 'Charlie', 'login': 'mwd_charlie',
+            'group_ids': [(6, 0, [self.group_user.id, self.group_editor.id])],
+        })
+        dashboard_model = self.env['mwd.dashboard'].with_user(charlie)
+
+        with self._with_partner_blueprint():
+            # Nothing is selectable yet, so there is nothing to put on it.
+            self.env['mwd.allowed.model'].search([]).unlink()
+            first = dashboard_model.get_dashboard_data()
+            self.assertEqual(first['tiles'], [])
+
+            # The administrator gets round to it afterwards, the normal order.
+            self.env['mwd.allowed.model'].create({'model_id': self.partner_model.id})
+            second = dashboard_model.get_dashboard_data()
+            self.assertTrue(second['tiles'],
+                            "the starter tiles should arrive on the next visit")
+            self.assertEqual(second['id'], first['id'], "and on the same dashboard")
+
+    def test_starter_tiles_are_not_offered_twice(self):
+        """Clearing your dashboard must not undo itself overnight."""
+        dashboard_model = self.env['mwd.dashboard'].with_user(self.alice)
+        with self._with_partner_blueprint():
+            dashboard_model.get_dashboard_data()
+            dashboard = self._dashboard_for(self.alice)
+            self.assertTrue(dashboard.starter_tiles_done)
+
+            dashboard.tile_ids.unlink()
+            self.assertEqual(dashboard_model.get_dashboard_data()['tiles'], [])
+
+    def test_a_selectable_model_with_no_blueprint_leaves_the_offer_open(self):
+        """Whitelisting only unusual models must not burn the one-time offer."""
+        dana = self.env['res.users'].create({
+            'name': 'Dana', 'login': 'mwd_dana',
+            'group_ids': [(6, 0, [self.group_user.id, self.group_editor.id])],
+        })
+        dashboard_model = self.env['mwd.dashboard'].with_user(dana)
+        # res.partner is selectable, but the shipped blueprints never mention it.
+        self.assertEqual(dashboard_model.get_dashboard_data()['tiles'], [])
+        self.assertFalse(self._dashboard_for(dana).starter_tiles_done)
+
+        with self._with_partner_blueprint():
+            self.assertTrue(dashboard_model.get_dashboard_data()['tiles'])
