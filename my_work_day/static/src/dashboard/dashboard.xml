@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-name="my_work_day.Dashboard">
+        <div class="o_action mwd_dashboard d-flex flex-column h-100">
+
+            <div class="mwd_header d-flex flex-wrap align-items-center gap-2 px-3 py-2">
+                <h1 class="mwd_title mb-0 me-auto">
+                    <t t-esc="state.data?.name or 'My Work Day'"/>
+                </h1>
+                <small class="text-muted d-none d-md-inline" t-esc="refreshedLabel"/>
+                <button class="btn btn-sm btn-light" t-on-click="onRefresh"
+                        title="Refresh now">
+                    <i class="fa fa-refresh" t-att-class="{ 'fa-spin': state.loading }"/>
+                </button>
+                <t t-if="state.data?.is_owner">
+                    <button class="btn btn-sm btn-light" t-on-click="onAddTile">
+                        <i class="fa fa-plus me-1"/><span class="d-none d-sm-inline">Add Tile</span>
+                    </button>
+                    <button class="btn btn-sm btn-light" t-on-click="onConfigure"
+                            title="Configure this dashboard">
+                        <i class="fa fa-cog"/>
+                    </button>
+                </t>
+                <button class="btn btn-sm"
+                        t-att-class="state.data?.is_home ? 'btn-primary' : 'btn-light'"
+                        t-on-click="onToggleHome"
+                        t-att-title="state.data?.is_home ? 'This is your landing page' : 'Make this your landing page'">
+                    <i class="fa fa-home"/>
+                </button>
+            </div>
+
+            <div class="o_content mwd_content flex-grow-1 overflow-auto px-3 pb-4">
+
+                <!-- Could not load at all -->
+                <div t-if="state.error" class="alert alert-danger" role="alert">
+                    <strong>This dashboard could not be loaded.</strong>
+                    <div class="small mt-1" t-esc="state.error"/>
+                </div>
+
+                <t t-elif="state.data">
+                    <MwdAppsRow t-if="state.data.show_apps"
+                                menuIds="state.data.app_menu_ids"
+                                onChanged.bind="load"/>
+
+                    <!-- Brand new, nothing configured -->
+                    <div t-if="!tiles.length" class="mwd_empty text-center py-5">
+                        <i class="fa fa-coffee fa-3x text-muted mb-3 d-block"/>
+                        <h3>Nothing on your dashboard yet</h3>
+                        <p class="text-muted">
+                            Add a tile to count the work waiting for you, such as draft
+                            orders or invoices to approve.
+                        </p>
+                        <button t-if="state.data.is_owner" class="btn btn-primary"
+                                t-on-click="onAddTile">
+                            <i class="fa fa-plus me-1"/>Add your first tile
+                        </button>
+                    </div>
+
+                    <div t-else="" class="mwd_grid" t-att-style="gridStyle">
+                        <MwdTile t-foreach="tiles" t-as="tile" t-key="tile.id"
+                                 tile="tile"
+                                 onOpenTile.bind="onOpenTileRecords"
+                                 onOpenLine.bind="onOpenLine"
+                                 onOpenGroup.bind="onOpenGroup"
+                                 onOpenRecord.bind="onOpenRecord"/>
+                    </div>
+                </t>
+
+                <div t-elif="state.loading" class="text-center py-5 text-muted">
+                    <i class="fa fa-circle-o-notch fa-spin fa-2x"/>
+                </div>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="my_work_day.AppsRow">
+        <div class="mwd_apps d-flex flex-wrap align-items-center gap-2 mb-3">
+            <t t-foreach="apps" t-as="app" t-key="app.id">
+                <button class="mwd_app btn btn-light d-flex align-items-center gap-2"
+                        t-on-click="() => this.onOpenApp(app)">
+                    <img t-if="app.webIconData" class="mwd_app_icon" t-att-src="app.webIconData"
+                         t-att-alt="app.name"/>
+                    <i t-else="" class="fa fa-th-large"/>
+                    <span t-esc="app.name"/>
+                </button>
+            </t>
+            <button class="btn btn-sm btn-link text-muted" t-on-click="onEditFavorites">
+                <i class="fa fa-pencil me-1"/>
+                <t t-if="apps.length">Edit my apps</t>
+                <t t-else="">Pick your favourite apps</t>
+            </button>
+        </div>
+    </t>
+
+</templates>

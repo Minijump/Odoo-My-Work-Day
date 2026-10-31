@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="res_config_settings_view_form_my_work_day" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.my.work.day</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="60"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="My Work Day" string="My Work Day" name="my_work_day"
+                     groups="my_work_day.group_my_work_day_manager">
+                    <block title="Landing Page" id="my_work_day_landing">
+                        <setting id="mwd_default_home"
+                                 help="New internal users land on their My Work Day dashboard instead of the apps menu. Existing users keep what they have.">
+                            <field name="mwd_default_home_action"/>
+                        </setting>
+                        <setting id="mwd_apply_all" string="Existing users"
+                                 help="Change the landing page of everyone at once. Each user can still override it in their own preferences.">
+                            <div class="mt-2">
+                                <span class="text-muted">
+                                    <field name="mwd_user_count" class="oe_inline"/>
+                                    internal users currently land on My Work Day.
+                                </span>
+                            </div>
+                            <div class="mt-2">
+                                <button name="action_apply_home_to_all_users" type="object"
+                                        string="Apply to all users" class="btn-link ps-0"
+                                        icon="fa-arrow-right"/>
+                                <button name="action_reset_home_for_all_users" type="object"
+                                        string="Reset to default" class="btn-link"
+                                        icon="fa-undo"/>
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="Tiles" id="my_work_day_tiles">
+                        <setting id="mwd_models"
+                                 help="Only the models you list here can be used in a tile. This keeps users out of corners of the database nobody meant them to browse.">
+                            <div class="mt-2">
+                                <button name="%(my_work_day.action_mwd_allowed_model)d"
+                                        type="action" string="Selectable Models"
+                                        class="btn-link ps-0" icon="fa-arrow-right"/>
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

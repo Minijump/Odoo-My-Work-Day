@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="mwd_tile_view_form" model="ir.ui.view">
+        <field name="name">mwd.tile.form</field>
+        <field name="model">mwd.tile</field>
+        <field name="arch" type="xml">
+            <form string="Tile">
+                <header>
+                    <button name="action_open_tile" type="object" string="Preview Records"
+                            class="btn-secondary" invisible="not id"/>
+                    <button name="action_duplicate_to_my_dashboard" type="object"
+                            string="Copy To My Dashboard" class="btn-secondary"
+                            invisible="not id"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. Sales to follow up"/></h1>
+                    </div>
+                    <group>
+                        <group string="What to count">
+                            <field name="allowed_model_id" options="{'no_create': True}"/>
+                            <field name="model_name" invisible="1"/>
+                            <field name="tile_type" widget="radio"/>
+                            <field name="base_domain" widget="domain"
+                                   options="{'model': 'model_name', 'foldable': True}"
+                                   invisible="not model_name"/>
+                        </group>
+                        <group string="How it looks">
+                            <field name="icon" placeholder="fa-shopping-cart"/>
+                            <field name="width"/>
+                            <field name="height"/>
+                            <field name="is_shared"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Counters" name="counters"
+                              invisible="tile_type != 'count'">
+                            <!--
+                                Lines open in a dialog rather than editing in
+                                place: a domain editor squeezed into a list
+                                column is unusable once a filter has more than
+                                one condition.
+                            -->
+                            <field name="line_ids" context="{'default_model_name': model_name}">
+                                <list>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <!--
+                                        No readonly="1" here: a field marked
+                                        readonly in the list is dropped from
+                                        the values sent when the parent tile is
+                                        saved, which silently reset every
+                                        filter to []. The list is not editable,
+                                        so the column is already display-only.
+                                    -->
+                                    <field name="domain" widget="domain"
+                                           options="{'model': 'model_name'}"/>
+                                    <field name="model_name" column_invisible="True"/>
+                                    <field name="color_condition"/>
+                                    <field name="color_threshold"/>
+                                    <field name="color"/>
+                                </list>
+                                <form>
+                                    <group>
+                                        <field name="name" placeholder="e.g. Draft"/>
+                                        <field name="model_name" invisible="1"/>
+                                    </group>
+                                    <label for="domain" string="Which records to count"/>
+                                    <field name="domain" widget="domain" nolabel="1"
+                                           options="{'model': 'model_name'}"/>
+                                    <group>
+                                        <group string="Highlight">
+                                            <field name="color_condition"/>
+                                            <field name="color_threshold"
+                                                   invisible="color_condition == 'none'"/>
+                                            <field name="color"
+                                                   invisible="color_condition == 'none'"/>
+                                        </group>
+                                    </group>
+                                </form>
+                            </field>
+                            <group>
+                                <field name="hide_empty_lines"/>
+                                <field name="show_total"/>
+                            </group>
+                        </page>
+                        <page string="Agenda" name="agenda" invisible="tile_type != 'agenda'">
+                            <group>
+                                <field name="date_field_id" options="{'no_create': True}"
+                                       required="tile_type == 'agenda'"/>
+                                <field name="agenda_limit"/>
+                            </group>
+                            <div class="text-muted">
+                                Shows the records of this model happening today, in time
+                                order, using your own time zone.
+                            </div>
+                        </page>
+                        <page string="Breakdown" name="breakdown"
+                              invisible="tile_type != 'breakdown'">
+                            <group>
+                                <field name="group_field_id" options="{'no_create': True}"
+                                       required="tile_type == 'breakdown'"/>
+                                <field name="group_field_ttype" invisible="1"/>
+                                <field name="group_granularity"
+                                       invisible="group_field_ttype not in ['date', 'datetime']"
+                                       required="group_field_ttype in ['date', 'datetime']"/>
+                                <field name="group_limit"/>
+                            </group>
+                            <div class="text-muted">
+                                Counts the records in each value of the chosen field and
+                                draws them as bars, largest first.
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="mwd_tile_view_list" model="ir.ui.view">
+        <field name="name">mwd.tile.list</field>
+        <field name="model">mwd.tile</field>
+        <field name="arch" type="xml">
+            <list string="Tiles">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="tile_type"/>
+                <field name="allowed_model_id"/>
+                <field name="user_id" optional="show"/>
+                <field name="is_shared" optional="show"/>
+                <field name="width" optional="hide"/>
+                <button name="action_duplicate_to_my_dashboard" type="object"
+                        icon="fa-clone" title="Copy to my dashboard"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="mwd_tile_view_search" model="ir.ui.view">
+        <field name="name">mwd.tile.search</field>
+        <field name="model">mwd.tile</field>
+        <field name="arch" type="xml">
+            <search string="Tiles">
+                <field name="name"/>
+                <field name="allowed_model_id"/>
+                <field name="user_id"/>
+                <filter name="mine" string="Mine" domain="[('user_id', '=', uid)]"/>
+                <filter name="shared_by_others" string="Shared By Others"
+                        domain="[('is_shared', '=', True), ('user_id', '!=', uid)]"/>
+                <separator/>
+                <filter name="counters" string="Counters" domain="[('tile_type', '=', 'count')]"/>
+                <filter name="agendas" string="Agendas" domain="[('tile_type', '=', 'agenda')]"/>
+                <filter name="breakdowns" string="Breakdowns"
+                        domain="[('tile_type', '=', 'breakdown')]"/>
+                <group>
+                    <filter name="group_owner" string="Owner" context="{'group_by': 'user_id'}"/>
+                    <filter name="group_model" string="Model"
+                            context="{'group_by': 'allowed_model_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+</odoo>

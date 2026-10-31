@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Favourite apps live on the user's own preferences, so each person picks
+        their own shortcuts without an administrator in the loop.
+    -->
+    <record id="res_users_view_form_preferences_mwd" model="ir.ui.view">
+        <field name="name">res.users.preferences.my.work.day</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form_simple_modif"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='preferences_page']" position="inside">
+                <group name="my_work_day" string="My Work Day">
+                    <field name="mwd_favorite_menu_ids" widget="many2many_tags"
+                           options="{'no_create': True}"
+                           placeholder="Pick the apps you use every day"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+
+    <t t-name="my_work_day.Tile">
+        <div class="mwd_tile card" t-att-style="style">
+
+            <div class="mwd_tile_header card-header d-flex align-items-center gap-2">
+                <i class="fa fa-fw" t-att-class="tile.icon"/>
+                <span class="mwd_tile_name text-truncate" t-esc="tile.name"/>
+                <span t-if="tile.total || tile.total === 0" class="badge text-bg-secondary ms-auto"
+                      t-esc="tile.total"/>
+                <button class="btn btn-sm btn-link text-muted p-0"
+                        t-att-class="{ 'ms-auto': !(tile.total || tile.total === 0) }"
+                        t-on-click="() => this.props.onOpenTile(tile)"
+                        title="Open all records of this tile">
+                    <i class="fa fa-external-link"/>
+                </button>
+            </div>
+
+            <div class="mwd_tile_body card-body">
+
+                <!-- Something went wrong with this one tile only -->
+                <div t-if="tile.error" class="mwd_tile_error text-danger small">
+                    <i class="fa fa-exclamation-triangle me-1"/>
+                    <t t-esc="tile.error"/>
+                </div>
+
+                <div t-elif="isEmpty" class="text-muted small fst-italic">
+                    Nothing to show.
+                </div>
+
+                <!-- Counters -->
+                <t t-elif="tile.type === 'count'">
+                    <t t-foreach="tile.lines" t-as="line" t-key="line.id">
+                        <div class="mwd_line d-flex align-items-center gap-2"
+                             t-att-class="colorClass(line.color)"
+                             t-on-click="() => this.props.onOpenLine(tile, line)">
+                            <span class="mwd_line_name text-truncate" t-esc="line.name"/>
+                            <span t-if="line.error" class="mwd_line_count ms-auto text-danger"
+                                  t-att-title="line.error">
+                                <i class="fa fa-exclamation-triangle"/>
+                            </span>
+                            <span t-else="" class="mwd_line_count ms-auto" t-esc="line.count"/>
+                        </div>
+                    </t>
+                </t>
+
+                <!-- Today's agenda -->
+                <t t-elif="tile.type === 'agenda'">
+                    <t t-foreach="tile.entries" t-as="entry" t-key="entry.id">
+                        <div class="mwd_line mwd_agenda_line d-flex align-items-center gap-2"
+                             t-on-click="() => this.props.onOpenRecord(tile, entry)">
+                            <span class="mwd_agenda_time text-muted" t-esc="entry.time"/>
+                            <span class="mwd_line_name text-truncate" t-esc="entry.name"/>
+                        </div>
+                    </t>
+                    <div t-if="tile.truncated" class="small text-muted mt-1">
+                        and <t t-esc="tile.total - tile.entries.length"/> more
+                    </div>
+                </t>
+
+                <!-- Breakdown bars -->
+                <t t-elif="tile.type === 'breakdown'">
+                    <t t-foreach="tile.bars" t-as="bar" t-key="bar_index">
+                        <div class="mwd_bar_row" t-on-click="() => this.props.onOpenGroup(tile, bar)">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="mwd_line_name text-truncate" t-esc="bar.label"/>
+                                <span class="mwd_line_count ms-auto" t-esc="bar.count"/>
+                            </div>
+                            <div class="mwd_bar_track">
+                                <div class="mwd_bar_fill" t-att-style="'width: ' + bar.ratio + '%;'"/>
+                            </div>
+                        </div>
+                    </t>
+                </t>
+            </div>
+        </div>
+    </t>
+
+</templates>

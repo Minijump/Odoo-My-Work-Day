@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="mwd_allowed_model_view_list" model="ir.ui.view">
+        <field name="name">mwd.allowed.model.list</field>
+        <field name="model">mwd.allowed.model</field>
+        <field name="arch" type="xml">
+            <list string="Selectable Models" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="model_id" options="{'no_create': True}"/>
+                <field name="model_name" optional="show"/>
+                <field name="group_ids" widget="many2many_tags" optional="show"/>
+                <field name="allow_agenda" optional="show"/>
+                <field name="date_field_id" optional="hide" options="{'no_create': True}"/>
+                <field name="active" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="mwd_allowed_model_view_form" model="ir.ui.view">
+        <field name="name">mwd.allowed.model.form</field>
+        <field name="model">mwd.allowed.model</field>
+        <field name="arch" type="xml">
+            <form string="Selectable Model">
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger"
+                            invisible="active"/>
+                    <group>
+                        <group>
+                            <field name="model_id" options="{'no_create': True}"/>
+                            <field name="name"/>
+                            <field name="model_name" invisible="1"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                        <group>
+                            <field name="group_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"/>
+                            <field name="allow_agenda"/>
+                            <field name="date_field_id" options="{'no_create': True}"
+                                   invisible="not allow_agenda"/>
+                        </group>
+                    </group>
+                    <div class="text-muted">
+                        This list decides what users may point a tile at. It is not a
+                        security boundary: counts and click-throughs always run with the
+                        user's own access rights, so adding a model here never shows
+                        anyone a record they could not already open from the menus.
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="mwd_allowed_model_view_search" model="ir.ui.view">
+        <field name="name">mwd.allowed.model.search</field>
+        <field name="model">mwd.allowed.model</field>
+        <field name="arch" type="xml">
+            <search string="Selectable Models">
+                <field name="name"/>
+                <field name="model_name"/>
+                <filter name="agenda" string="Agenda Allowed" domain="[('allow_agenda', '=', True)]"/>
+                <filter name="restricted" string="Group Restricted" domain="[('group_ids', '!=', False)]"/>
+                <separator/>
+                <filter name="inactive" string="Archived" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+</odoo>

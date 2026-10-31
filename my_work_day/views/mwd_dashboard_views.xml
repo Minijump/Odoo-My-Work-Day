@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="mwd_dashboard_view_form" model="ir.ui.view">
+        <field name="name">mwd.dashboard.form</field>
+        <field name="model">mwd.dashboard</field>
+        <field name="arch" type="xml">
+            <form string="Dashboard">
+                <header>
+                    <button name="%(my_work_day.action_my_work_day_dashboard)d" type="action"
+                            string="Open Dashboard" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="user_id" options="{'no_create': True}"
+                                   readonly="not id"/>
+                            <field name="column_count"/>
+                        </group>
+                        <group>
+                            <field name="refresh_interval"/>
+                            <field name="show_apps"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Tiles" name="tiles">
+                            <field name="tile_ids">
+                                <list>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="tile_type"/>
+                                    <field name="allowed_model_id"/>
+                                    <field name="width" optional="show"/>
+                                    <field name="is_shared" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="mwd_dashboard_view_list" model="ir.ui.view">
+        <field name="name">mwd.dashboard.list</field>
+        <field name="model">mwd.dashboard</field>
+        <field name="arch" type="xml">
+            <list string="Dashboards">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="tile_count" string="Tiles"/>
+                <field name="refresh_interval" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="mwd_dashboard_view_search" model="ir.ui.view">
+        <field name="name">mwd.dashboard.search</field>
+        <field name="model">mwd.dashboard</field>
+        <field name="arch" type="xml">
+            <search string="Dashboards">
+                <field name="name"/>
+                <field name="user_id"/>
+                <filter name="mine" string="Mine" domain="[('user_id', '=', uid)]"/>
+                <group>
+                    <filter name="group_owner" string="Owner" context="{'group_by': 'user_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+</odoo>

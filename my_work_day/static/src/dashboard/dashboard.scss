@@ -1,0 +1,167 @@
+// My Work Day dashboard
+//
+// Written from scratch rather than borrowed from any existing dashboard.
+//
+// Colours come from Bootstrap's *Sass* variables, not `var(--bs-*)` custom
+// properties: Odoo compiles Bootstrap with Sass and does not emit those custom
+// properties in the backend bundle, so `var(--bs-danger)` resolves to nothing.
+// Going through Sass also means the whole file is recompiled per theme, which
+// is what keeps it correct in dark mode.
+
+.mwd_dashboard {
+    background-color: $body-bg;
+
+    .mwd_header {
+        border-bottom: 1px solid $border-color;
+        background-color: $o-gray-100;
+    }
+
+    .mwd_title {
+        font-size: 1.25rem;
+        font-weight: 500;
+    }
+
+    .mwd_content {
+        padding-top: 1rem;
+    }
+
+    // --- favourite apps -------------------------------------------------
+
+    .mwd_app {
+        border: 1px solid $border-color;
+
+        .mwd_app_icon {
+            height: 1.5em;
+            width: auto;
+        }
+    }
+
+    // --- the tile grid --------------------------------------------------
+    //
+    // One column on a phone, two on a tablet, and the configured number on a
+    // wide screen. A tile that asks for more columns than exist is clamped by
+    // CSS `min()`, which has to be written as an interpolated string: Sass has
+    // a `min()` of its own and would try to evaluate the `var()`s at build time.
+
+    .mwd_grid {
+        --mwd-columns: 4;
+
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 1fr;
+
+        @include media-breakpoint-up(sm) {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        @include media-breakpoint-up(lg) {
+            grid-template-columns: repeat(var(--mwd-columns), minmax(0, 1fr));
+        }
+    }
+
+    .mwd_tile {
+        --mwd-tile-width: 1;
+        --mwd-tile-height: 1;
+
+        grid-column: span 1;
+
+        @include media-breakpoint-up(sm) {
+            grid-column: span #{"min(var(--mwd-tile-width), 2)"};
+        }
+
+        @include media-breakpoint-up(lg) {
+            grid-column: span #{"min(var(--mwd-tile-width), var(--mwd-columns))"};
+            grid-row: span var(--mwd-tile-height);
+        }
+    }
+
+    .mwd_tile_header {
+        font-weight: 500;
+
+        .mwd_tile_name {
+            min-width: 0;
+        }
+    }
+
+    .mwd_tile_body {
+        padding: 0.25rem 0;
+    }
+
+    // --- lines ----------------------------------------------------------
+
+    .mwd_line {
+        padding: 0.4rem 1rem;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+
+        &:hover {
+            background-color: $o-gray-200;
+        }
+
+        .mwd_line_name {
+            min-width: 0;
+        }
+
+        .mwd_line_count {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+    }
+
+    // Colour rules. Only the number and the left edge are tinted: colouring a
+    // whole row makes a busy dashboard unreadable. The number's shade is held
+    // in a custom property so the dark theme can lighten it instead of
+    // darkening it, without repeating any of the layout.
+    @each $name, $color in (
+        "info": $info,
+        "success": $success,
+        "warning": $warning,
+        "danger": $danger,
+    ) {
+        .mwd_line.mwd_color_#{$name} {
+            --mwd-accent: #{$color};
+            --mwd-accent-text: #{darken($color, 8%)};
+        }
+    }
+
+    .mwd_line[class*="mwd_color_"] {
+        border-left-color: var(--mwd-accent, transparent);
+
+        .mwd_line_count {
+            color: var(--mwd-accent-text, inherit);
+        }
+    }
+
+    .mwd_agenda_time {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        min-width: 3.2rem;
+    }
+
+    // --- breakdown bars -------------------------------------------------
+
+    .mwd_bar_row {
+        padding: 0.4rem 1rem;
+        cursor: pointer;
+
+        &:hover {
+            background-color: $o-gray-200;
+        }
+
+        .mwd_bar_track {
+            height: 6px;
+            margin-top: 0.25rem;
+            border-radius: 3px;
+            background-color: $o-gray-200;
+            overflow: hidden;
+        }
+
+        .mwd_bar_fill {
+            height: 100%;
+            border-radius: 3px;
+            background-color: $primary;
+            min-width: 2px;
+            transition: width 0.2s ease;
+        }
+    }
+}

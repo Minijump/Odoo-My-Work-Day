@@ -1,0 +1,22 @@
+// = My Work Day, dark theme
+// ============================================================================
+// No CSS hacks, variable overrides only.
+//
+// Everything else already follows the theme, because the stylesheet is built
+// on Sass variables that the dark bundle recompiles. The one thing that does
+// not carry over is the highlight shade: darkening a colour is right against a
+// white card and wrong against a dark one, where it has to be lightened to
+// stay legible.
+
+.mwd_dashboard {
+    @each $name, $color in (
+        "info": $info,
+        "success": $success,
+        "warning": $warning,
+        "danger": $danger,
+    ) {
+        .mwd_line.mwd_color_#{$name} {
+            --mwd-accent-text: #{lighten($color, 12%)};
+        }
+    }
+}
