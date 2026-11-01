@@ -1,13 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <templates xml:space="preserve">
 
+    <!--
+        Styled the way the navbar styles its own entries, and no other way.
+        `o_nav_entry` is what carries the white-on-purple colour, the height
+        and the hover state; Bootstrap's `btn btn-link` fights it for the
+        colour, and `text-reset` wins outright with an `!important` that made
+        the icon inherit the page's black.
+    -->
     <t t-name="my_work_day.SystrayItem">
-        <div class="o_mwd_systray o_mail_systray_item">
-            <button class="btn btn-link o_nav_entry text-reset"
+        <div class="o_mwd_systray">
+            <button class="o_nav_entry border-0"
+                    type="button"
                     t-att-disabled="state.busy"
                     t-on-click="onClick"
                     title="My Work Day">
-                <i class="fa fa-lg fa-coffee" role="img" aria-label="My Work Day"/>
+                <i class="fa fa-lg fa-briefcase" role="img" aria-label="My Work Day"/>
             </button>
         </div>
     </t>
