@@ -46,6 +46,19 @@
                                  help="How often an open dashboard reloads its counters, for everyone. Refreshing pauses while the browser tab is in the background.">
                             <field name="mwd_refresh_interval"/>
                         </setting>
+                        <setting id="mwd_limits" string="Limits"
+                                 help="What a user may build on one dashboard. Every tile on the page is counted on each load, so these are what stop one enthusiastic user turning a page load into hundreds of queries. Leave a limit empty for no limit.">
+                            <div class="content-group">
+                                <div class="row mt16">
+                                    <label for="mwd_max_tiles" class="col-lg-4 o_light_label"/>
+                                    <field name="mwd_max_tiles"/>
+                                </div>
+                                <div class="row">
+                                    <label for="mwd_max_lines" class="col-lg-4 o_light_label"/>
+                                    <field name="mwd_max_lines"/>
+                                </div>
+                            </div>
+                        </setting>
                         <setting id="mwd_check_tiles" string="After an upgrade"
                                  help="List the tiles whose filters no longer match the database, so a field that disappeared is visible straight away instead of waiting for someone to notice a broken tile.">
                             <div class="mt-2">

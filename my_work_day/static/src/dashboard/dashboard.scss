@@ -136,6 +136,7 @@
     }
 
     .mwd_line[class*="mwd_color_"],
+    .mwd_value[class*="mwd_color_"],
     .mwd_bar_row[class*="mwd_color_"] {
         border-left-color: var(--mwd-accent, transparent);
         background-color: var(--mwd-accent-bg, transparent);
@@ -144,7 +145,8 @@
             background-color: var(--mwd-accent-bg-hover, #{$o-gray-200});
         }
 
-        .mwd_line_count {
+        .mwd_line_count,
+        .mwd_value_count {
             color: var(--mwd-accent-text, inherit);
         }
     }
@@ -153,6 +155,35 @@
     // falls back to the plain rules above and stays exactly as it was.
     .mwd_bar_row[class*="mwd_color_"] .mwd_bar_fill {
         background-color: var(--mwd-accent, #{$primary});
+    }
+
+    // --- single-number tiles --------------------------------------------
+    //
+    // The number is the whole tile, so it gets the room. It is sized off the
+    // tile's own height rather than a fixed value: wanting a bigger figure is
+    // about the only reason to make one of these tall, so the two should move
+    // together. `calc()` is an interpolated string because Sass has a `calc`
+    // of its own and would try to resolve the custom property at build time.
+
+    .mwd_value {
+        // Grows to whatever height the row ends up with, so the figure stays
+        // in the middle of the tile however tall the tile beside it makes it.
+        flex: 1 1 auto;
+        padding: 0.25rem 1rem 0.75rem;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+        min-height: #{"calc(3.5rem * var(--mwd-tile-height, 1))"};
+
+        &:hover {
+            background-color: $o-gray-200;
+        }
+
+        .mwd_value_count {
+            font-size: #{"calc(2.25rem * var(--mwd-tile-height, 1))"};
+            font-weight: 600;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
     }
 
     // --- calendar tiles -------------------------------------------------

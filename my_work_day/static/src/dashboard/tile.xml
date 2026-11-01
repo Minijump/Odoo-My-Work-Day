@@ -23,7 +23,10 @@
                 month grid no room to be read.
             -->
             <div class="mwd_tile_body card-body"
-                 t-att-class="{ 'p-0 overflow-hidden': tile.type === 'calendar' and !tile.error }">
+                 t-att-class="{
+                     'p-0 overflow-hidden': tile.type === 'calendar' and !tile.error,
+                     'd-flex flex-column': tile.type === 'value' and !tile.error,
+                 }">
 
                 <!-- Something went wrong with this one tile only -->
                 <div t-if="tile.error" class="mwd_tile_error text-danger small">
@@ -49,6 +52,15 @@
                             <span t-else="" class="mwd_line_count ms-auto" t-esc="line.count"/>
                         </div>
                     </t>
+                </t>
+
+                <!-- One number, as large as the tile allows -->
+                <t t-elif="tile.type === 'value'">
+                    <div class="mwd_value d-flex align-items-center justify-content-center"
+                         t-att-class="colorClass(tile.color)"
+                         t-on-click="() => this.props.onOpenTile(tile)">
+                        <span class="mwd_value_count" t-esc="tile.value"/>
+                    </div>
                 </t>
 
                 <!-- Today's agenda -->

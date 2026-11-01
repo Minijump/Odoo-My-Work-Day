@@ -19,11 +19,12 @@ model.
 set: a tinted row, a coloured left edge and a coloured number, so *Overdue 3* catches
 your eye and *Planned 19* does not. The same rules apply to breakdown bars.
 
-**Four kinds of tile.**
+**Five kinds of tile.**
 
 | Type | Shows |
 |---|---|
 | Counter | One line per filter, with counts |
+| Number | One count, large, for the figure that matters most |
 | Agenda | Today's records on a date field, in time order |
 | Breakdown | A `read_group` drawn as bars — orders per salesperson, say. Sort by size or by value, so a date breakdown can read chronologically |
 | Calendar | A real calendar grid — Odoo's own calendar view, on the date field you pick |
@@ -39,8 +40,16 @@ field the tile points at, which is both more useful (you choose the field) and m
 widely applicable: Odoo's own generated fallback insists on an end date that most
 models do not have, and would refuse.
 
+**A number tile is a counter tile with the lines taken away**, which is the point:
+when one figure matters more than the five around it, it should not have to share a
+tile with them. It has no filters of its own — the tile's base filter *is* the filter,
+since there is nothing for a second one to sit on top of — and it takes the same
+colour rules, so a number can turn red on its own terms. Clicking it opens the records
+behind it, exactly as clicking a counter line does.
+
 **Tile sizes.** One to four columns wide, one or two rows tall. The grid collapses
-to a single column on a phone.
+to a single column on a phone. A number tile sizes its figure off the tile's height,
+so making one tall is how you make its number bigger.
 
 **Icons.** Picked from a grid, not typed: the field stores a Font Awesome class, but
 you choose by looking at it, with a search across all 786 icons the bundled font can draw.
@@ -139,6 +148,18 @@ at the moment an administrator wants it, instead of waiting for someone to notic
 validates the tiles rather than running them, so it costs nothing to run on a big
 database.
 
+Under *Settings → General Settings → My Work Day* you can also cap what a user may
+build: how many tiles one dashboard may hold, and how many filters one tile may hold.
+Every tile on the page is counted on each load, so without a cap one enthusiastic user
+can turn their own page load into hundreds of queries. Leave either limit empty, or at
+zero, for no limit — which is how the module behaves out of the box.
+
+The caps apply to what gets added, not to what already exists. Lowering a limit never
+breaks a dashboard that is already over it: it stays readable and its tiles stay
+editable, and only the next tile or filter is refused. The starter tiles respect the
+caps too, because a welcome that tripped over its own limit would leave a new user
+with no dashboard at all.
+
 A dashboard is offered starter tiles for whatever is selectable, once. The offer waits
 until there is something to offer, so filling the whitelist after people have already
 opened the page still works — otherwise everyone who looked too early would be stuck
@@ -163,10 +184,10 @@ Two things that bite on Odoo 19 specifically:
 odoo-bin -d <database> --addons-path=<odoo>/addons,<this repo> -u my_work_day --test-enable --test-tags=/my_work_day --stop-after-init
 ```
 
-54 tests, built on `res.partner` so they pass on a database with nothing else installed.
+70 tests, built on `res.partner` so they pass on a database with nothing else installed.
 They cover the access levels, the colour rules, the breakdown sorting, the calendar arch,
-the health check, and what happens to a dashboard when a field a tile depends on
-disappears.
+the limits, the health check, and what happens to a dashboard when a field a tile depends
+on disappears.
 
 Two traps worth knowing if you add tests:
 
@@ -188,24 +209,6 @@ state without a copy of Enterprise to check against, `web_enterprise` replaces t
 Community apps dropdown with a full-screen home-menu overlay toggled by the logo —
 but that is background, not a checked fact, and code aimed at it could not be tested
 here and would do nothing in Community.
-
-
-## Still open
-
-One suggestion you liked and set aside, kept here so it is not lost.
-
-- **A hard cap on tiles per dashboard.** Nothing stops a user adding fifty tiles, each
-  with ten filters, and every page load then runs five hundred `search_count` queries.
-  One request, but a heavy one. A limit — or a warning past, say, twenty tiles — costs
-  almost nothing and removes the only way a user can make this module a performance
-  problem for everyone else.
-
-Deliberately not suggested: drag-and-drop tile reordering (the sequence field and the
-list view already do it, and dragging inside a CSS grid is a lot of code for a rare
-action), tile templates shared by an administrator (the duplicate-a-shared-tile flow
-already covers it), and per-tile refresh intervals (auto-refresh is now one number set
-by an administrator, which is the point: a per-tile rate would hand the query load back
-to whoever is building tiles).
 
 ## Licence
 

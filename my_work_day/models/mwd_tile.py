@@ -14,6 +14,23 @@ from odoo.tools.safe_eval import safe_eval
 
 _logger = logging.getLogger(__name__)
 
+# Caps an administrator can put on what a user may build. Both are optional:
+# an unset, empty or nonsensical parameter means no limit, which is how the
+# module behaves out of the box.
+MAX_TILES_PARAM = 'my_work_day.max_tiles_per_dashboard'
+MAX_LINES_PARAM = 'my_work_day.max_lines_per_tile'
+
+
+def limit_from(env, param):
+    """An administrator's cap as a positive number, or None for "no limit"."""
+    try:
+        limit = int(env['ir.config_parameter'].sudo().get_param(param) or 0)
+    except ValueError:
+        # A hand-edited parameter should not lock everyone out of their own
+        # dashboard; an unreadable limit is no limit.
+        return None
+    return limit if limit > 0 else None
+
 COLORS = [
     ('muted', 'Neutral'),
     ('info', 'Blue'),
@@ -58,10 +75,11 @@ class MwdTile(models.Model):
     user_id = fields.Many2one(
         related='dashboard_id.user_id', string='Owner', store=True, index=True)
     tile_type = fields.Selection(
-        [('count', 'Counters'), ('agenda', "Today's Agenda"),
+        [('count', 'Counters'), ('value', 'Single Number'), ('agenda', "Today's Agenda"),
          ('breakdown', 'Breakdown'), ('calendar', 'Calendar')],
         string='Type', default='count', required=True,
         help="Counters: one line per named filter, showing how many records match.\n"
+             "Single Number: one count, large, for the figure that matters most.\n"
              "Today's Agenda: the records of this model happening today.\n"
              "Breakdown: how many records fall into each value of a field.\n"
              "Calendar: a real calendar grid, for a tile you read like a diary.",
@@ -100,6 +118,18 @@ class MwdTile(models.Model):
         string='Hide Empty Lines', default=False,
         help="Leave out lines that count zero, so the tile only shows actual work.")
     show_total = fields.Boolean(string='Show Total', default=False)
+
+    # -- single-number tiles --
+    # These have no lines of their own: the tile's base filter *is* the filter,
+    # since there is nothing for a second one to sit on top of. That keeps the
+    # type to what it is for -- one figure, large enough to read across a room.
+    value_color_condition = fields.Selection(
+        CONDITIONS, string='Highlight When', default='none', required=True,
+        help="Colour the number once it crosses a threshold, the same way a "
+             "counter line is highlighted.")
+    value_color_threshold = fields.Integer(string='Threshold', default=0)
+    value_color = fields.Selection(
+        COLORS, string='Highlight Colour', default='warning', required=True)
 
     # -- agenda tiles --
     date_field_id = fields.Many2one(
@@ -185,6 +215,48 @@ class MwdTile(models.Model):
                 raise ValidationError(_(
                     "You are not allowed to build a tile on %s.",
                     tile.allowed_model_id.display_name,
+                ))
+
+    @api.constrains('dashboard_id')
+    def _check_tile_limit(self):
+        """Keep a dashboard within the number of tiles an administrator allows.
+
+        Every tile on the page is counted in one request, so fifty tiles of ten
+        filters is one request that runs five hundred queries. The cap is the
+        only thing stopping one user making that everyone's problem.
+
+        Counted with sudo: the point is how many tiles the dashboard holds, not
+        how many this user happens to be able to see.
+        """
+        limit = limit_from(self.env, MAX_TILES_PARAM)
+        if not limit:
+            return
+        for dashboard in self.mapped('dashboard_id'):
+            count = self.env['mwd.tile'].sudo().search_count([
+                ('dashboard_id', '=', dashboard.id),
+            ])
+            if count > limit:
+                raise ValidationError(_(
+                    "A dashboard can hold at most %(limit)s tiles, and this one "
+                    "would have %(count)s. Remove a tile first, or ask an "
+                    "administrator to raise the limit.",
+                    limit=limit, count=count,
+                ))
+
+    @api.constrains('line_ids')
+    def _check_line_limit(self):
+        """Keep a tile within the number of filters an administrator allows."""
+        limit = limit_from(self.env, MAX_LINES_PARAM)
+        if not limit:
+            return
+        for tile in self:
+            count = len(tile.sudo().line_ids)
+            if count > limit:
+                raise ValidationError(_(
+                    "A tile can hold at most %(limit)s filters, and \"%(name)s\" "
+                    "would have %(count)s. Remove a filter first, or ask an "
+                    "administrator to raise the limit.",
+                    limit=limit, name=tile.name, count=count,
                 ))
 
     @api.constrains('base_domain')
@@ -332,6 +404,8 @@ class MwdTile(models.Model):
         try:
             if self.tile_type == 'count':
                 data.update(self._get_count_data())
+            elif self.tile_type == 'value':
+                data.update(self._get_value_data())
             elif self.tile_type == 'agenda':
                 data.update(self._get_agenda_data())
             elif self.tile_type == 'breakdown':
@@ -379,6 +453,21 @@ class MwdTile(models.Model):
         return {
             'lines': lines,
             'total': total if self.show_total else None,
+        }
+
+    def _get_value_data(self):
+        """One number, counted through the tile's own filter.
+
+        No lines, so nothing here can half-fail: either the count works or the
+        tile reports an error, which `_get_tile_data` already handles.
+        """
+        self.ensure_one()
+        count = self._record_model().search_count(self._full_domain())
+        return {
+            'value': count,
+            'color': color_for(
+                self.value_color_condition, self.value_color_threshold,
+                self.value_color, count),
         }
 
     def _today_bounds(self):

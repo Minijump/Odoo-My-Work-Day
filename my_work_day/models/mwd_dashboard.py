@@ -2,6 +2,8 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.tools.translate import _
 
+from .mwd_tile import MAX_LINES_PARAM, MAX_TILES_PARAM, limit_from
+
 # How often every dashboard on this database reloads its counters, in seconds.
 # It lives in a system parameter rather than on the dashboard because the
 # number decides the query load of the whole database, which is not something
@@ -158,15 +160,23 @@ class MwdDashboard(models.Model):
         ``available`` is passed in rather than looked up here because this runs
         with sudo: asking the superuser which models are available would answer
         "all of them" and quietly put a tile on a model the owner cannot read.
+
+        The administrator's caps apply here too. A welcome that trips over its
+        own limit and raises would leave the user with no dashboard at all,
+        which is a worse first impression than a shorter one.
         """
         self.ensure_one()
         by_model = {allowed.model_name: allowed for allowed in available}
+        tile_limit = limit_from(self.env, MAX_TILES_PARAM)
+        line_limit = limit_from(self.env, MAX_LINES_PARAM)
         created = 0
         sequence = 0
         for blueprint in self._starter_tile_blueprints():
             allowed = by_model.get(blueprint['model'])
             if not allowed:
                 continue
+            if tile_limit and created >= tile_limit:
+                break
             sequence += 10
             self.env['mwd.tile'].create({
                 'dashboard_id': self.id,
@@ -184,7 +194,8 @@ class MwdDashboard(models.Model):
                         'color': color,
                     })
                     for index, (name, domain, condition, threshold, color)
-                    in enumerate(blueprint['lines'])
+                    in enumerate(blueprint['lines'][:line_limit] if line_limit
+                                 else blueprint['lines'])
                 ],
             })
             created += 1

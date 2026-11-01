@@ -1,6 +1,7 @@
 from odoo import _, api, fields, models
 
 from .mwd_dashboard import REFRESH_INTERVAL_PARAM
+from .mwd_tile import MAX_LINES_PARAM, MAX_TILES_PARAM
 from .res_users import HOME_ACTION_PARAM
 
 
@@ -27,6 +28,20 @@ class ResConfigSettings(models.TransientModel):
              "each user. Refreshing pauses while a browser tab is in the "
              "background, so a dashboard left open overnight still costs "
              "nothing.",
+    )
+    mwd_max_tiles = fields.Integer(
+        string='Tiles per dashboard',
+        config_parameter=MAX_TILES_PARAM,
+        help="The most tiles one dashboard may hold. Every tile on the page is "
+             "counted on each load, so this is what stops one enthusiastic user "
+             "turning a page load into hundreds of queries. Leave empty, or at "
+             "zero, for no limit.",
+    )
+    mwd_max_lines = fields.Integer(
+        string='Filters per tile',
+        config_parameter=MAX_LINES_PARAM,
+        help="The most filters one counter tile may hold. Leave empty, or at "
+             "zero, for no limit.",
     )
 
     @api.depends('mwd_default_home_action')

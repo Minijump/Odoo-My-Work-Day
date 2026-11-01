@@ -90,6 +90,24 @@
                                 <field name="show_total"/>
                             </group>
                         </page>
+                        <page string="Number" name="value"
+                              invisible="tile_type != 'value'">
+                            <div class="text-muted mb-3">
+                                A single number tile has no filters of its own: the
+                                <em>Base Filter</em> above is the filter, because there
+                                is nothing for a second one to sit on top of. Clicking
+                                the number opens the records behind it.
+                            </div>
+                            <group>
+                                <group string="Highlight">
+                                    <field name="value_color_condition"/>
+                                    <field name="value_color_threshold"
+                                           invisible="value_color_condition == 'none'"/>
+                                    <field name="value_color"
+                                           invisible="value_color_condition == 'none'"/>
+                                </group>
+                            </group>
+                        </page>
                         <page string="Agenda" name="agenda" invisible="tile_type != 'agenda'">
                             <group>
                                 <field name="agenda_limit"/>
@@ -197,6 +215,8 @@
                         domain="[('is_shared', '=', True), ('user_id', '!=', uid)]"/>
                 <separator/>
                 <filter name="counters" string="Counters" domain="[('tile_type', '=', 'count')]"/>
+                <filter name="numbers" string="Single Numbers"
+                        domain="[('tile_type', '=', 'value')]"/>
                 <filter name="agendas" string="Agendas" domain="[('tile_type', '=', 'agenda')]"/>
                 <filter name="breakdowns" string="Breakdowns"
                         domain="[('tile_type', '=', 'breakdown')]"/>

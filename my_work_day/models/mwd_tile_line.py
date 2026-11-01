@@ -35,6 +35,16 @@ class MwdTileLine(models.Model):
         for line in self:
             line.tile_id._validate_domain(line.domain)
 
+    @api.constrains('tile_id')
+    def _check_tile_line_limit(self):
+        """Count the filters per tile here as well as on the tile itself.
+
+        A line can be created on its own, with only ``tile_id`` set, which
+        never touches the tile's own ``line_ids`` constraint. The check lives
+        on the tile; this is the second door into it.
+        """
+        self.mapped('tile_id')._check_line_limit()
+
     @api.constrains('color_threshold')
     def _check_threshold(self):
         for line in self:

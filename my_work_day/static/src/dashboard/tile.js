@@ -16,6 +16,10 @@ export function isTileEmpty(tile) {
     switch (tile.type) {
         case "count":
             return !tile.lines?.length;
+        // A single number is never empty: zero is the answer, not the absence
+        // of one, and a tile whose whole job is to show it should show it.
+        case "value":
+            return false;
         case "agenda":
             return !tile.entries?.length;
         case "breakdown":

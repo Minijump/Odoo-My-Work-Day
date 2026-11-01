@@ -803,3 +803,191 @@ class TestMyWorkDay(TransactionCase):
         self._break_line_domain(tile.line_ids, "[('nope', '=', 1)]")
         result = self.env['mwd.tile'].action_check_tiles()
         self.assertIn(tile.id, result['domain'][0][2])
+
+    # ------------------------------------------------------------------
+    # Single-number tiles
+    # ------------------------------------------------------------------
+
+    def _value_tile(self, user, domain="[]", **values):
+        dashboard = self._dashboard_for(user)
+        return self.env['mwd.tile'].with_user(user).create({
+            'dashboard_id': dashboard.id,
+            'name': values.pop('name', 'Companies'),
+            'tile_type': 'value',
+            'allowed_model_id': self.allowed_partner.id,
+            'base_domain': domain,
+            **values,
+        })
+
+    def test_value_tile_counts_through_its_own_filter(self):
+        """The base filter is the filter: there are no lines to put one on."""
+        tile = self._value_tile(self.alice, "[('is_company', '=', True)]")
+        data = tile.with_user(self.alice)._get_tile_data()
+
+        self.assertFalse(data['error'])
+        self.assertEqual(data['type'], 'value')
+        self.assertEqual(
+            data['value'],
+            self.env['res.partner'].with_user(self.alice).search_count(
+                [('is_company', '=', True)]),
+        )
+        self.assertEqual(data['lines'], [], "a number tile has no lines")
+
+    def test_value_tile_shows_zero_rather_than_nothing(self):
+        """Zero is the answer, not the absence of one."""
+        tile = self._value_tile(self.alice, "[('id', '=', 0)]")
+        self.assertEqual(tile.with_user(self.alice)._get_tile_data()['value'], 0)
+
+    def test_value_tile_colour_rule(self):
+        tile = self._value_tile(
+            self.alice, "[('is_company', '=', True)]",
+            value_color_condition='gt', value_color_threshold=1,
+            value_color='danger')
+        self.assertEqual(tile.with_user(self.alice)._get_tile_data()['color'], 'danger')
+
+        tile.value_color_threshold = 10_000
+        self.assertEqual(tile.with_user(self.alice)._get_tile_data()['color'], 'muted')
+
+    def test_value_tile_click_through_opens_what_was_counted(self):
+        tile = self._value_tile(self.alice, "[('is_company', '=', True)]")
+        tile = tile.with_user(self.alice)
+        action = tile.action_open_tile()
+        self.assertEqual(
+            self.env['res.partner'].with_user(self.alice).search_count(action['domain']),
+            tile._get_tile_data()['value'],
+        )
+
+    def test_value_tile_counts_only_what_its_owner_may_see(self):
+        """The same boundary as every other tile, not a shortcut around it."""
+        self.env['ir.rule'].create({
+            'name': 'MWD test: hide companies from Alice',
+            'model_id': self.partner_model.id,
+            'groups': [(6, 0, [self.group_user.id])],
+            'domain_force': "[('is_company', '=', False)]",
+        })
+        tile = self._value_tile(self.alice, "[]")
+        data = tile.with_user(self.alice)._get_tile_data()
+        self.assertEqual(
+            data['value'],
+            self.env['res.partner'].with_user(self.alice).search_count([]),
+        )
+        self.assertLess(
+            data['value'],
+            self.env['res.partner'].sudo().search_count([]),
+            'the rule should have hidden some records',
+        )
+
+    # ------------------------------------------------------------------
+    # The limits an administrator can set
+    # ------------------------------------------------------------------
+
+    def _set_limit(self, param, value):
+        self.env['ir.config_parameter'].sudo().set_param(param, value)
+
+    def test_nothing_is_limited_until_an_administrator_says_so(self):
+        for index in range(6):
+            self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}],
+                               name='Tile %s' % index)
+        self.assertEqual(len(self._dashboard_for(self.alice).tile_ids), 6)
+
+    def test_a_dashboard_stops_at_the_tile_limit(self):
+        self._set_limit('my_work_day.max_tiles_per_dashboard', '2')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}], name='One')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}], name='Two')
+        with self.assertRaises(ValidationError):
+            self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}], name='Three')
+        self.assertEqual(len(self._dashboard_for(self.alice).tile_ids), 2)
+
+    def test_the_tile_limit_is_per_dashboard_not_per_database(self):
+        self._set_limit('my_work_day.max_tiles_per_dashboard', '1')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}], name='Alice only')
+        # Bob's own dashboard is untouched by how full Alice's is.
+        self._counter_tile(self.bob, [{'name': 'All', 'domain': "[]"}], name='Bob only')
+        self.assertEqual(len(self._dashboard_for(self.bob).tile_ids), 1)
+
+    def test_lowering_the_limit_leaves_a_full_dashboard_readable(self):
+        """A cap applies to what you build next, not to what you already have."""
+        for index in range(3):
+            self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}],
+                               name='Tile %s' % index)
+        self._set_limit('my_work_day.max_tiles_per_dashboard', '1')
+
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data()
+        self.assertEqual(len(data['tiles']), 3)
+        with self.assertRaises(ValidationError):
+            self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}], name='One more')
+
+    def test_a_tile_stops_at_the_filter_limit(self):
+        self._set_limit('my_work_day.max_lines_per_tile', '2')
+        with self.assertRaises(ValidationError):
+            self._counter_tile(self.alice, [
+                {'name': 'One', 'domain': "[]"},
+                {'name': 'Two', 'domain': "[]"},
+                {'name': 'Three', 'domain': "[]"},
+            ])
+
+    def test_the_filter_limit_catches_a_line_added_on_its_own(self):
+        """A line can be created with only tile_id set, bypassing the tile's own check."""
+        self._set_limit('my_work_day.max_lines_per_tile', '2')
+        tile = self._counter_tile(self.alice, [
+            {'name': 'One', 'domain': "[]"},
+            {'name': 'Two', 'domain': "[]"},
+        ])
+        with self.assertRaises(ValidationError):
+            self.env['mwd.tile.line'].with_user(self.alice).create({
+                'tile_id': tile.id, 'name': 'Three', 'domain': "[]",
+            })
+
+    def test_the_filter_limit_does_not_touch_a_number_tile(self):
+        """A single-number tile has no lines, so no filter limit can bite it."""
+        self._set_limit('my_work_day.max_lines_per_tile', '1')
+        tile = self._value_tile(self.alice, "[('is_company', '=', True)]")
+        self.assertTrue(tile.with_user(self.alice)._get_tile_data()['value'])
+
+    def test_a_nonsense_limit_is_no_limit(self):
+        self._set_limit('my_work_day.max_tiles_per_dashboard', 'as many as you like')
+        for index in range(3):
+            self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}],
+                               name='Tile %s' % index)
+        self.assertEqual(len(self._dashboard_for(self.alice).tile_ids), 3)
+
+    def test_zero_means_no_limit_rather_than_no_tiles(self):
+        self._set_limit('my_work_day.max_tiles_per_dashboard', '0')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        self.assertEqual(len(self._dashboard_for(self.alice).tile_ids), 1)
+
+    def test_starter_tiles_stay_within_the_limits(self):
+        """A welcome that trips over the cap would leave the user with nothing."""
+        self._set_limit('my_work_day.max_tiles_per_dashboard', '1')
+        self._set_limit('my_work_day.max_lines_per_tile', '1')
+        erin = self.env['res.users'].create({
+            'name': 'Erin', 'login': 'mwd_erin',
+            'group_ids': [(6, 0, [self.group_user.id, self.group_editor.id])],
+        })
+        with self._with_partner_blueprint():
+            data = self.env['mwd.dashboard'].with_user(erin).get_dashboard_data()
+        self.assertEqual(len(data['tiles']), 1)
+        self.assertLessEqual(len(data['tiles'][0]['lines']), 1)
+
+    def test_a_tile_over_a_new_limit_can_still_be_edited(self):
+        """Lowering a limit must not strand people with unmaintainable tiles.
+
+        The checks fire on what adds to the count, not on every write, so a
+        tile that was legal when it was built stays editable: only one more
+        filter is refused.
+        """
+        tile = self._counter_tile(self.alice, [
+            {'name': 'One', 'domain': "[]"},
+            {'name': 'Two', 'domain': "[]"},
+            {'name': 'Three', 'domain': "[]"},
+        ])
+        self._set_limit('my_work_day.max_lines_per_tile', '2')
+
+        tile.with_user(self.alice).write({'name': 'Renamed', 'width': '2'})
+        self.assertEqual(tile.name, 'Renamed')
+        tile.with_user(self.alice).line_ids[0].write({'name': 'Still editable'})
+
+        with self.assertRaises(ValidationError):
+            self.env['mwd.tile.line'].with_user(self.alice).create({
+                'tile_id': tile.id, 'name': 'Four', 'domain': "[]",
+            })
