@@ -213,3 +213,16 @@ here and would do nothing in Community.
 ## Licence
 
 LGPL-3.
+
+## Roadmap
+- Calendar view seems wrong, it does not respect the time I set in the calendar app + clicking on the tile should open the calendar main view, not a list view (this last point may be more difficult because it does not respects the logic of the tiles. But I think it could be a great improvement, even for every tile: clicking on a tile should open an 'app' or a selected menu instead of a list vie inside the my work day app. To investigate (could be interseting to be able to link an app/menu to a tile and even to a tile line?)). Anyway, I need to know from where it takes the calendar view and if we can take the calendar view we want or only the one of a dedicated app. After a small investigation, it seems that there are 2 kind of views: agenda and calendar: agenda is a list view based on today's date (it is great but maybe should be renamed). Calendar is an embeded calendar view, based on a model and a field. I am not sure we can do better to make sure we have the possibility to have the calendar we want. However, as is, the problem is that there is no 'end date field', so the 'today's calendar' is wrong.
+- add auto refresh time: 1h, 2h, 4h
+- remove the menu that checks the tile, this feature should only be in the main settings (as it is already the case)
+- add a keyboard shortcut to open the dashboard? (low priority, probably impossible)
+- Add chatter in the tile (if not done yet), to track every fields
+- I think we should give the possibility to open a new tab when clicking on a tile/tile line. Currently it opens the menu in the same tab even if I click on maj+ctrl+click. Either do it in the params of the tile, or allow the maj ctrl click
+- simplify tile building? How can the tile form view can be simplified. How can the tile duplication be simplified? How can the tile content edition be simplified? -> It is already acceptable, so no change if it request q lot of code/complexity, only 'simple change that brings lot of values. (add a preview of the tile while building? Allow shared tile selection from the form view (so that user do not need to go in the dedicated menu)). maybe rename tiles'n names? (breakdown in breakdowns graph, agenda in agenda list? ...)
+- code audit (redudent code, useless code, structural problem, security issues, 'low use' features that takes too much code or increase strucutre complexity, ...)
+- update readme
+- ?publish on the odoo store?
+- go public
