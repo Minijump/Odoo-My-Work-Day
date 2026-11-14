@@ -24,6 +24,10 @@
                     <button class="btn btn-sm btn-light" t-on-click="onAddTile">
                         <i class="fa fa-plus me-1"/><span class="d-none d-sm-inline">Add Tile</span>
                     </button>
+                    <button class="btn btn-sm btn-light" t-on-click="onAddSharedTile"
+                            title="Copy a tile a colleague has shared">
+                        <i class="fa fa-clone"/>
+                    </button>
                     <button class="btn btn-sm btn-light" t-on-click="onConfigure"
                             title="Configure this dashboard">
                         <i class="fa fa-cog"/>

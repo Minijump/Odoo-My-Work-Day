@@ -4,6 +4,7 @@ import logging
 import pytz
 from dateutil.relativedelta import relativedelta
 
+from lxml import etree
 from markupsafe import escape
 
 from odoo import _, api, fields, models
@@ -75,13 +76,13 @@ class MwdTile(models.Model):
     user_id = fields.Many2one(
         related='dashboard_id.user_id', string='Owner', store=True, index=True)
     tile_type = fields.Selection(
-        [('count', 'Counters'), ('value', 'Single Number'), ('agenda', "Today's Agenda"),
-         ('breakdown', 'Breakdown'), ('calendar', 'Calendar')],
+        [('count', 'Counters'), ('value', 'Single Number'), ('agenda', "Today's List"),
+         ('breakdown', 'Bar Chart'), ('calendar', 'Calendar')],
         string='Type', default='count', required=True,
         help="Counters: one line per named filter, showing how many records match.\n"
              "Single Number: one count, large, for the figure that matters most.\n"
-             "Today's Agenda: the records of this model happening today.\n"
-             "Breakdown: how many records fall into each value of a field.\n"
+             "Today's List: the records of this model happening today, in time order.\n"
+             "Bar Chart: how many records fall into each value of a field.\n"
              "Calendar: a real calendar grid, for a tile you read like a diary.",
     )
     icon = fields.Char(
@@ -92,6 +93,13 @@ class MwdTile(models.Model):
         string='Width', default='1', required=True)
     height = fields.Selection(
         [('1', 'Normal'), ('2', 'Tall')], string='Height', default='1', required=True)
+    menu_id = fields.Many2one(
+        'ir.ui.menu', string='Open In', ondelete='set null',
+        domain="[('mwd_res_model', '=', model_name)]",
+        help="An app menu to open when the tile is clicked, so you land inside that "
+             "app rather than on a plain list. Only menus showing this tile's model "
+             "are offered. The tile's filter still applies, as a fixed filter that "
+             "cannot be removed from the search bar. Leave empty for a plain list.")
 
     is_shared = fields.Boolean(
         string='Share With Colleagues', default=False, copy=False,
@@ -147,6 +155,21 @@ class MwdTile(models.Model):
         string='Calendar Scale', default='week', required=True,
         help="Which span the calendar opens on. The reader can still switch "
              "scale from the tile itself.")
+    # Without an end, Odoo's calendar draws every record as exactly one hour
+    # from its start: a 9:00-12:00 meeting shows as 9:00-10:00, and an all-day
+    # event as a one-hour block at whatever time its start happens to hold.
+    date_stop_field_id = fields.Many2one(
+        'ir.model.fields', string='End Date Field', ondelete='set null',
+        domain="[('model', '=', model_name), ('ttype', 'in', ['date', 'datetime']),"
+               " ('store', '=', True)]",
+        help="The field that says when a record ends. Leave empty and every "
+             "record is drawn one hour long.")
+    all_day_field_id = fields.Many2one(
+        'ir.model.fields', string='All-Day Field', ondelete='set null',
+        domain="[('model', '=', model_name), ('ttype', '=', 'boolean'),"
+               " ('store', '=', True)]",
+        help="A yes/no field marking records that last the whole day, such as "
+             "'All Day' on a meeting.")
 
     # -- breakdown tiles --
     group_field_id = fields.Many2one(
@@ -193,12 +216,53 @@ class MwdTile(models.Model):
         """Clear anything that referred to the previous model."""
         self.date_field_id = False
         self.group_field_id = False
+        self.menu_id = False
         self.base_domain = '[]'
         for line in self.line_ids:
             line.domain = '[]'
             line.model_name = self.allowed_model_id.model_name
         if self.allowed_model_id.date_field_id:
             self.date_field_id = self.allowed_model_id.date_field_id
+
+    @api.onchange('tile_type', 'date_field_id')
+    def _onchange_calendar_fields(self):
+        """Borrow the end and all-day fields from the model's own calendar view.
+
+        Only when that view starts on the same field the tile does, and only to
+        fill blanks: this is a suggestion for the common case -- a calendar
+        tile on meetings should show meetings the way the Calendar app does
+        without anyone having to know the field is called ``stop`` -- not a
+        rule that overrides what the owner chose.
+        """
+        if (self.tile_type != 'calendar' or not self.date_field_id
+                or self.date_stop_field_id or self.all_day_field_id):
+            return
+        model = self.env.get(self.model_name)
+        if model is None:
+            return
+        try:
+            arch = model.get_view(view_type='calendar')['arch']
+        except Exception:  # noqa: BLE001 - most models have no calendar view
+            return
+        node = etree.fromstring(arch)
+        if node.get('date_start') != self.date_field_id.sudo().name:
+            return
+        fields_model = self.env['ir.model.fields']
+        if node.get('date_stop'):
+            self.date_stop_field_id = fields_model._get(self.model_name, node.get('date_stop'))
+        if node.get('all_day'):
+            self.all_day_field_id = fields_model._get(self.model_name, node.get('all_day'))
+
+    @api.constrains('menu_id', 'allowed_model_id')
+    def _check_menu_model(self):
+        for tile in self:
+            if tile.menu_id and tile.menu_id.sudo().mwd_res_model != tile.model_name:
+                raise ValidationError(_(
+                    "The menu %(menu)s does not show %(model)s records, so it cannot "
+                    "show what this tile counts.",
+                    menu=tile.menu_id.sudo().complete_name,
+                    model=tile.allowed_model_id.display_name,
+                ))
 
     @api.constrains('allowed_model_id')
     def _check_model_allowed(self):
@@ -268,14 +332,19 @@ class MwdTile(models.Model):
     def _check_required_fields(self):
         for tile in self:
             if tile.tile_type in ('agenda', 'calendar') and not tile.date_field_id:
-                raise ValidationError(_("An %s tile needs a date field.", tile.tile_type))
+                raise ValidationError(_("This type of tile needs a date field."))
             if tile.tile_type == 'breakdown' and not tile.group_field_id:
-                raise ValidationError(_("A breakdown tile needs a field to group by."))
+                raise ValidationError(_("A bar chart tile needs a field to group by."))
 
-    @api.constrains('date_field_id', 'group_field_id', 'allowed_model_id')
+    @api.constrains('date_field_id', 'group_field_id', 'date_stop_field_id',
+                    'all_day_field_id', 'allowed_model_id')
     def _check_fields_belong_to_model(self):
         for tile in self:
-            for field in (tile.date_field_id, tile.group_field_id):
+            # sudo: a field the user may not read must still be refused
+            # with this message rather than an access error.
+            used = (tile.date_field_id | tile.group_field_id
+                    | tile.date_stop_field_id | tile.all_day_field_id)
+            for field in used.sudo():
                 if field and field.model != tile.model_name:
                     raise ValidationError(_(
                         "The field %(field)s does not belong to %(model)s.",
@@ -492,7 +561,7 @@ class MwdTile(models.Model):
         """
         self.ensure_one()
         model = self._record_model()
-        field_name = self.date_field_id.name
+        field_name = self.date_field_id.sudo().name
         field = model._fields.get(field_name)
         if field is None:
             raise UserError(_("The field %s no longer exists.", field_name))
@@ -547,30 +616,49 @@ class MwdTile(models.Model):
         """
         self.ensure_one()
         model = self._record_model()
-        field_name = self.date_field_id.name
+        field_name = self.date_field_id.sudo().name
         if field_name not in model._fields:
             raise UserError(_("The field %s no longer exists.", field_name))
+        # The end and all-day fields are optional, and a field that vanished
+        # since the tile was built is simply left out rather than failing the
+        # tile: a calendar with one-hour blocks is still a calendar.
+        extra = ''
+        used = [field_name, 'display_name']
+        for attribute, field in (('date_stop', self.date_stop_field_id.sudo()),
+                                 ('all_day', self.all_day_field_id.sudo())):
+            if field and field.name in model._fields:
+                extra += ' %s="%s"' % (attribute, escape(field.name))
+                used.append(field.name)
         arch = (
-            '<calendar date_start="%s" mode="%s" string="%s"'
+            '<calendar date_start="%s"%s mode="%s" string="%s"'
             ' create="0" edit="0" delete="0" quick_create="0"'
             ' show_date_picker="0" event_limit="3"/>'
         ) % (
             escape(field_name),
+            extra,
             escape(self.calendar_mode or 'week'),
             escape(self.name or ''),
         )
         # The domain is resolved here, as everywhere else, so the browser is
         # handed a plain list and never evaluates a stored expression.
+        #
+        # `fields` describes every field the arch relies on. The browser gets
+        # the rest from the model's list view, but a list view only describes
+        # the fields it shows -- usually not display_name, which is where the
+        # calendar takes each event's title from, and without which every
+        # event was drawn as a blank block.
         return {
             'arch': arch,
+            'mode': self.calendar_mode,
             'domain': self._full_domain(),
+            'fields': model.fields_get(used),
         }
 
     def _get_breakdown_data(self):
         """How many records fall into each value of the grouping field."""
         self.ensure_one()
         model = self._record_model()
-        field_name = self.group_field_id.name
+        field_name = self.group_field_id.sudo().name
         field = model._fields.get(field_name)
         if field is None:
             raise UserError(_("The field %s no longer exists.", field_name))
@@ -657,8 +745,8 @@ class MwdTile(models.Model):
         model = self.env.get(self.model_name)
         if model is None:
             return _("The model %s is no longer installed.", self.model_name)
-        for field in (self.date_field_id, self.group_field_id):
-            if field and field.name not in model._fields:
+        for field in (self.date_field_id | self.group_field_id).sudo():
+            if field.name not in model._fields:
                 return _("The field %s no longer exists.", field.name)
         if self.tile_type in ('agenda', 'calendar') and not self.date_field_id:
             return _("This tile needs a date field and has none.")
@@ -710,6 +798,23 @@ class MwdTile(models.Model):
     # Click-through
     # ------------------------------------------------------------------
 
+    def _menu_action(self):
+        """The action behind this tile's menu, or None to open a plain list.
+
+        Only while the user can still see the menu and it still opens this
+        tile's model: either can change after the tile was built, and a click
+        should then fall back quietly rather than fail. Visibility is the same
+        test the navbar uses, which hides a menu whose groups the user lacks or
+        whose action they could not read.
+        """
+        self.ensure_one()
+        menu = self.menu_id._filter_visible_menus()
+        if not menu or menu.sudo().mwd_res_model != self.model_name:
+            return None
+        action = menu.sudo().action._get_action_dict()
+        action['mwd_menu_id'] = menu.id
+        return action
+
     def _open_action(self, domain, name):
         """An act_window on this tile's model, filtered to what was clicked.
 
@@ -720,12 +825,33 @@ class MwdTile(models.Model):
         model = self._record_model()
         if model is None:
             raise UserError(_("The model %s is not available.", self.model_name))
+        menu_action = self._menu_action()
+        if menu_action:
+            # The menu provides the frame -- its views, its help text, the app
+            # around it -- and the tile provides the records. The menu's own
+            # domain is replaced rather than combined, so the list always shows
+            # exactly what the tile counted.
+            # display_name too: it is what the breadcrumb shows, and the tile's
+            # own name is what explains why the list is filtered.
+            menu_action.update({
+                'name': name, 'display_name': name, 'domain': domain, 'target': 'current',
+            })
+            return menu_action
+        views = [[False, 'list'], [False, 'form']]
+        # A calendar tile opens on a calendar, when the model has one of its
+        # own: reading a week as a list is a step backwards. Only a real view
+        # counts here -- Odoo's generated fallback needs an end date most
+        # models lack and would fail as the page opened.
+        if self.tile_type == 'calendar' and self.env['ir.ui.view'].sudo().search_count([
+            ('model', '=', self.model_name), ('type', '=', 'calendar'),
+        ], limit=1):
+            views.insert(0, [False, 'calendar'])
         return {
             'type': 'ir.actions.act_window',
             'name': name,
             'res_model': self.model_name,
             'domain': domain,
-            'views': [[False, 'list'], [False, 'form']],
+            'views': views,
             'target': 'current',
             'context': {'create': False},
         }
@@ -763,13 +889,17 @@ class MwdTile(models.Model):
         if not record:
             raise UserError(_("This record no longer exists."))
         record.check_access('read')
-        return {
+        result = {
             'type': 'ir.actions.act_window',
             'res_model': self.model_name,
             'res_id': record.id,
             'views': [[False, 'form']],
             'target': 'current',
         }
+        menu_action = self._menu_action()
+        if menu_action:
+            result['mwd_menu_id'] = menu_action['mwd_menu_id']
+        return result
 
     def action_duplicate_to_my_dashboard(self):
         """Copy this tile onto the current user's own dashboard.

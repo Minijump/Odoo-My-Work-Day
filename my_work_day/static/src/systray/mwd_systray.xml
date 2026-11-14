@@ -10,8 +10,14 @@
     -->
     <t t-name="my_work_day.SystrayItem">
         <div class="o_mwd_systray">
+            <!--
+                data-hotkey is how Odoo gives its own buttons a keyboard
+                shortcut: hold Alt and the hints appear. shift+w is free across
+                Community, and W is for Work.
+            -->
             <button class="o_nav_entry border-0"
                     type="button"
+                    data-hotkey="shift+w"
                     t-att-disabled="state.busy"
                     t-on-click="onClick"
                     title="My Work Day">

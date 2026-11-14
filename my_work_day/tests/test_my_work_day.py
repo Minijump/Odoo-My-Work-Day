@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from odoo.addons.my_work_day.models.mwd_dashboard import MwdDashboard
 from odoo.exceptions import AccessError, UserError, ValidationError
-from odoo.tests import TransactionCase, tagged
+from odoo.tests import Form, TransactionCase, tagged
 
 
 @tagged('post_install', '-at_install')
@@ -679,6 +679,8 @@ class TestMyWorkDay(TransactionCase):
         self.assertEqual(data['type'], 'calendar')
         self.assertIn('date_start="create_date"', data['arch'])
         self.assertIn('mode="day"', data['arch'])
+        # The browser keys the remembered scale on it, per tile.
+        self.assertEqual(data['mode'], 'day')
         # Read-only: a dashboard is for looking at.
         for attribute in ('create="0"', 'edit="0"', 'delete="0"'):
             self.assertIn(attribute, data['arch'])
@@ -991,3 +993,266 @@ class TestMyWorkDay(TransactionCase):
             self.env['mwd.tile.line'].with_user(self.alice).create({
                 'tile_id': tile.id, 'name': 'Four', 'domain': "[]",
             })
+
+    # ------------------------------------------------------------------
+    # Calendar tiles: end dates, all-day records, opening on a calendar
+    # ------------------------------------------------------------------
+
+    def _partner_field(self, name):
+        return self.env['ir.model.fields']._get('res.partner', name)
+
+    def _partner_calendar_view(self):
+        """A calendar view for res.partner, which a bare database does not have."""
+        return self.env['ir.ui.view'].create({
+            'name': 'MWD test partner calendar',
+            'model': 'res.partner',
+            'type': 'calendar',
+            'arch': '<calendar date_start="create_date" date_stop="write_date"'
+                    ' all_day="is_company"/>',
+        })
+
+    def test_calendar_tile_without_an_end_draws_one_hour_blocks(self):
+        """No end field, no date_stop: Odoo's calendar then defaults to one hour."""
+        data = self._calendar_tile(self.alice).with_user(self.alice)._get_tile_data()
+        self.assertNotIn('date_stop', data['arch'])
+        self.assertNotIn('all_day', data['arch'])
+
+    def test_calendar_tile_passes_its_end_and_all_day_fields_on(self):
+        """A 9:00-12:00 meeting must be drawn 9:00-12:00, not 9:00-10:00."""
+        tile = self._calendar_tile(
+            self.alice,
+            date_stop_field_id=self._partner_field('write_date').id,
+            all_day_field_id=self._partner_field('is_company').id,
+        )
+        arch = tile.with_user(self.alice)._get_tile_data()['arch']
+        self.assertIn('date_stop="write_date"', arch)
+        self.assertIn('all_day="is_company"', arch)
+
+    def test_calendar_end_field_must_belong_to_the_tile_model(self):
+        with self.assertRaises(ValidationError):
+            self._calendar_tile(
+                self.alice,
+                date_stop_field_id=self.env['ir.model.fields']._get(
+                    'res.users', 'write_date').id,
+            )
+
+    def test_calendar_end_and_all_day_are_borrowed_from_the_model_view(self):
+        """Pick the date field and the rest follows, when the model knows it."""
+        self._partner_calendar_view()
+        dashboard = self._dashboard_for(self.alice)
+        tile_model = self.env['mwd.tile'].with_user(self.alice).with_context(
+            default_dashboard_id=dashboard.id)
+        with Form(tile_model) as form:
+            form.name = 'Diary'
+            form.allowed_model_id = self.allowed_partner
+            form.tile_type = 'calendar'
+            form.date_field_id = self._partner_field('create_date')
+            self.assertEqual(form.date_stop_field_id, self._partner_field('write_date'))
+            self.assertEqual(form.all_day_field_id, self._partner_field('is_company'))
+
+    def test_calendar_view_is_not_borrowed_for_a_different_start(self):
+        """The view's end only means something alongside the view's own start."""
+        self._partner_calendar_view()
+        dashboard = self._dashboard_for(self.alice)
+        tile_model = self.env['mwd.tile'].with_user(self.alice).with_context(
+            default_dashboard_id=dashboard.id)
+        with Form(tile_model) as form:
+            form.name = 'Diary'
+            form.allowed_model_id = self.allowed_partner
+            form.tile_type = 'calendar'
+            form.date_field_id = self._partner_field('write_date')
+            self.assertFalse(form.date_stop_field_id)
+            self.assertFalse(form.all_day_field_id)
+
+    def test_calendar_tile_opens_on_a_calendar_when_the_model_has_one(self):
+        tile = self._calendar_tile(self.alice).with_user(self.alice)
+        self.assertEqual(tile.action_open_tile()['views'][0], [False, 'list'],
+                         "no calendar view of its own: Odoo's fallback would fail")
+
+        self._partner_calendar_view()
+        self.assertEqual(tile.action_open_tile()['views'][0], [False, 'calendar'])
+
+    def test_only_calendar_tiles_open_on_a_calendar(self):
+        self._partner_calendar_view()
+        tile = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        self.assertEqual(
+            tile.with_user(self.alice).action_open_tile()['views'][0], [False, 'list'])
+
+    # ------------------------------------------------------------------
+    # Odds and ends from the roadmap
+    # ------------------------------------------------------------------
+
+    def test_longer_refresh_intervals_are_honoured(self):
+        self._set_limit('my_work_day.refresh_interval', '14400')
+        self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data()
+        self.assertEqual(data['refresh_interval'], 14400)
+
+    def test_the_health_check_has_no_menu_of_its_own(self):
+        """It lives in Settings only; the action behind it stays."""
+        self.assertFalse(self.env.ref(
+            'my_work_day.menu_my_work_day_check_tiles', raise_if_not_found=False))
+        self.assertTrue(self.env.ref('my_work_day.action_mwd_tile_check'))
+
+    # ------------------------------------------------------------------
+    # Field metadata for users who are not administrators
+    # ------------------------------------------------------------------
+    #
+    # Odoo 19 gives ordinary users no access to ir.model.fields. Every test in
+    # this section clears the ORM cache first: metadata an administrator looked
+    # up earlier in the same test otherwise sits there and hides the access
+    # error a real user would hit -- which is exactly how this went unnoticed.
+
+    def _as_fresh(self, record, user):
+        self.env.invalidate_all()
+        return record.with_user(user)
+
+    def test_field_based_tiles_render_for_their_editor(self):
+        agenda = self.env['mwd.tile'].with_user(self.alice).create({
+            'dashboard_id': self._dashboard_for(self.alice).id,
+            'name': 'Created today', 'tile_type': 'agenda',
+            'allowed_model_id': self.allowed_partner.id,
+            'date_field_id': self._partner_field('create_date').id,
+        })
+        breakdown = self._breakdown_tile(self.alice)
+        calendar = self._calendar_tile(
+            self.alice, date_stop_field_id=self._partner_field('write_date').id)
+        for tile in (agenda, breakdown, calendar):
+            data = self._as_fresh(tile, self.alice)._get_tile_data()
+            self.assertFalse(data['error'], "%s tile failed" % tile.tile_type)
+
+    def test_field_based_tiles_render_for_a_reader(self):
+        """A Reader's dashboard is often laid out by someone else."""
+        dashboard = self._dashboard_for(self.reader)
+        tile = self.env['mwd.tile'].create({
+            'dashboard_id': dashboard.id,
+            'name': 'By kind', 'tile_type': 'breakdown',
+            'allowed_model_id': self.allowed_partner.id,
+            'group_field_id': self._partner_field('is_company').id,
+        })
+        data = self._as_fresh(tile, self.reader)._get_tile_data()
+        self.assertFalse(data['error'])
+        self.assertTrue(data['bars'])
+
+    def test_an_editor_can_pick_fields_of_selectable_models_only(self):
+        self.assertFalse(self.env['mwd.allowed.model'].search(
+            [('model_name', '=', 'res.users')]), "res.users must not be whitelisted here")
+        fields_model = self._as_fresh(self.env['ir.model.fields'], self.alice)
+        self.assertTrue(fields_model.search_count([('model', '=', 'res.partner')]))
+        self.assertFalse(fields_model.search_count([('model', '=', 'res.users')]),
+                         "the grant is no wider than the whitelist")
+        self.assertTrue(fields_model.name_search(
+            'create', domain=[('model', '=', 'res.partner')]))
+
+    def test_an_editor_cannot_point_a_tile_at_another_models_field(self):
+        """Refused with a proper message, not an access error."""
+        with self.assertRaises(ValidationError):
+            self._as_fresh(self.env['mwd.tile'], self.alice).create({
+                'dashboard_id': self._dashboard_for(self.alice).id,
+                'name': 'Sneaky', 'tile_type': 'agenda',
+                'allowed_model_id': self.allowed_partner.id,
+                'date_field_id': self.env['ir.model.fields'].sudo()._get(
+                    'res.users', 'login_date').id,
+            })
+
+    def test_administrators_still_see_every_field(self):
+        """Every user is a Reader; the Reader rule must not narrow the admin."""
+        admin = self.env.ref('base.user_admin')
+        fields_model = self._as_fresh(self.env['ir.model.fields'], admin)
+        self.assertTrue(fields_model.search_count([('model', '=', 'res.users')]))
+
+    # ------------------------------------------------------------------
+    # Linking a tile to an app menu
+    # ------------------------------------------------------------------
+
+    def _partner_menu(self, **values):
+        """A menu opening res.partner, which a bare database does not have.
+
+        Its action carries a domain and a search default of its own, the way
+        real app menus do, so the tests can check both are kept out of the way.
+        """
+        action = self.env['ir.actions.act_window'].create({
+            'name': 'MWD test contacts',
+            'res_model': 'res.partner',
+            'view_mode': 'kanban,list,form',
+            'domain': "[('is_company', '=', True)]",
+            'context': "{'search_default_type_company': 1, 'default_is_company': True}",
+        })
+        return self.env['ir.ui.menu'].create({
+            'name': 'MWD test contacts',
+            'action': 'ir.actions.act_window,%s' % action.id,
+            **values,
+        })
+
+    def test_only_menus_on_the_tile_model_are_offered(self):
+        menu = self._partner_menu()
+        menus = self.env['ir.ui.menu']
+        self.assertIn(menu, menus.search([('mwd_res_model', '=', 'res.partner')]))
+        self.assertNotIn(menu, menus.search([('mwd_res_model', '=', 'res.users')]))
+
+    def test_a_menu_on_another_model_is_refused(self):
+        users_action = self.env['ir.actions.act_window'].create({
+            'name': 'MWD test users', 'res_model': 'res.users'})
+        menu = self.env['ir.ui.menu'].create({
+            'name': 'MWD test users',
+            'action': 'ir.actions.act_window,%s' % users_action.id,
+        })
+        with self.assertRaises(ValidationError):
+            self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}], menu_id=menu.id)
+
+    def test_a_linked_tile_opens_its_menu_on_exactly_what_it_counted(self):
+        menu = self._partner_menu()
+        tile = self._counter_tile(
+            self.alice, [{'name': 'People', 'domain': "[('is_company', '=', False)]"}],
+            menu_id=menu.id,
+        ).with_user(self.alice)
+
+        action = tile.action_open_line(tile.line_ids.id)
+        self.assertEqual(action['mwd_menu_id'], menu.id)
+        self.assertEqual(action['id'], menu.action.id, "the menu's own action and views")
+        self.assertEqual(
+            self.env['res.partner'].with_user(self.alice).search_count(action['domain']),
+            tile._get_tile_data()['lines'][0]['count'],
+            "the menu's own domain (companies only) must not narrow the list",
+        )
+
+    def test_a_menu_the_user_cannot_see_falls_back_to_a_plain_list(self):
+        menu = self._partner_menu(group_ids=[(6, 0, [self.env.ref('base.group_system').id])])
+        tile = self._counter_tile(
+            self.alice, [{'name': 'All', 'domain': "[]"}], menu_id=menu.id)
+        action = tile.with_user(self.alice).action_open_tile()
+        self.assertNotIn('mwd_menu_id', action)
+        self.assertEqual(action['views'][0], [False, 'list'])
+
+    def test_an_unlinked_tile_still_opens_a_plain_list(self):
+        tile = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        action = tile.with_user(self.alice).action_open_tile()
+        self.assertNotIn('mwd_menu_id', action)
+
+    def test_a_linked_agenda_entry_opens_inside_the_app(self):
+        menu = self._partner_menu()
+        tile = self.env['mwd.tile'].with_user(self.alice).create({
+            'dashboard_id': self._dashboard_for(self.alice).id,
+            'name': 'Created today', 'tile_type': 'agenda',
+            'allowed_model_id': self.allowed_partner.id,
+            'date_field_id': self._partner_field('create_date').id,
+            'menu_id': menu.id,
+        })
+        partner = self.env['res.partner'].search([], limit=1)
+        action = tile.with_user(self.alice).action_open_record(partner.id)
+        self.assertEqual(action['res_id'], partner.id)
+        self.assertEqual(action['mwd_menu_id'], menu.id)
+
+    def test_changing_the_model_clears_the_menu(self):
+        menu = self._partner_menu()
+        allowed_currency = self.env['mwd.allowed.model'].create({
+            'model_id': self.env['ir.model']._get('res.currency').id,
+        })
+        tile_model = self.env['mwd.tile'].with_user(self.alice).with_context(
+            default_dashboard_id=self._dashboard_for(self.alice).id)
+        with Form(tile_model) as form:
+            form.name = 'Moving'
+            form.allowed_model_id = self.allowed_partner
+            form.menu_id = menu
+            form.allowed_model_id = allowed_currency
+            self.assertFalse(form.menu_id)

@@ -1,4 +1,4 @@
-import { Component, onWillStart, onWillUpdateProps } from "@odoo/owl";
+import { Component, onWillStart, onWillUpdateProps, useSubEnv } from "@odoo/owl";
 
 import { useService } from "@web/core/utils/hooks";
 import { View } from "@web/views/view";
@@ -22,6 +22,10 @@ export class MwdCalendarTile extends Component {
 
     setup() {
         this.viewService = useService("view");
+        // Read by calendar_scale_patch.js, so this tile remembers its own scale
+        // instead of sharing one with every other calendar tile.
+        const { tile } = this.props;
+        useSubEnv({ config: { ...this.env.config, mwdScaleKey: `${tile.id}-${tile.mode}` } });
         onWillStart(() => this.buildViewProps(this.props));
         onWillUpdateProps((nextProps) => this.buildViewProps(nextProps));
     }
@@ -34,11 +38,18 @@ export class MwdCalendarTile extends Component {
         // model has one, generated if need be, while a calendar view often
         // cannot be generated at all. The view service caches the result, so
         // several tiles on one model cost one request.
-        const { fields, relatedModels } = await this.viewService.loadViews({
+        const loaded = await this.viewService.loadViews({
             resModel: tile.model,
             views: [[false, "list"]],
             context: {},
         });
+        // The list view only describes its own columns; the server adds the
+        // fields this calendar needs, the event title among them.
+        const fields = { ...loaded.fields, ...tile.fields };
+        const relatedModels = {
+            ...loaded.relatedModels,
+            [tile.model]: { ...loaded.relatedModels[tile.model], fields },
+        };
         this.viewProps = {
             type: "calendar",
             resModel: tile.model,

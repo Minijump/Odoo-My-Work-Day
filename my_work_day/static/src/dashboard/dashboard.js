@@ -1,8 +1,11 @@
 import { Component, onWillStart, onWillUnmount, useState } from "@odoo/owl";
 
+import { makeContext } from "@web/core/context";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
+import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
+import { SelectCreateDialog } from "@web/views/view_dialogs/select_create_dialog";
 import { standardActionServiceProps } from "@web/webclient/actions/action_service";
 
 import { MwdAppsRow } from "./apps_row";
@@ -24,6 +27,8 @@ export class MwdDashboard extends Component {
         this.orm = useService("orm");
         this.action = useService("action");
         this.notification = useService("notification");
+        this.dialog = useService("dialog");
+        this.menu = useService("menu");
 
         this.state = useState({
             data: null,
@@ -163,6 +168,30 @@ export class MwdDashboard extends Component {
         );
     }
 
+    /**
+     * Pick a colleague's shared tile and copy it here, without leaving the page.
+     *
+     * The same thing the Shared Tiles menu does, one click away from where the
+     * need arises. The copy goes through the server method that menu uses, so
+     * the tile limit and ownership rules apply exactly as they do there.
+     */
+    onAddSharedTile() {
+        this.dialog.add(SelectCreateDialog, {
+            resModel: "mwd.tile",
+            title: _t("Copy a Colleague's Tile"),
+            domain: [
+                ["is_shared", "=", true],
+                ["user_id", "!=", user.userId],
+            ],
+            noCreate: true,
+            onSelected: async (resIds) => {
+                await this.orm.call("mwd.tile", "action_duplicate_to_my_dashboard", [resIds]);
+                await this.load();
+                this.notification.add(_t("Added to your dashboard."), { type: "success" });
+            },
+        });
+    }
+
     async onToggleHome() {
         const method = this.state.data.is_home ? "action_unset_as_home" : "action_set_as_home";
         await this.orm.call("mwd.dashboard", method, []);
@@ -175,24 +204,58 @@ export class MwdDashboard extends Component {
         );
     }
 
-    async onOpenTileRecords(tile) {
+    /**
+     * Run the action the server built for a click on a tile.
+     *
+     * When the tile is linked to an app menu, the action is that menu's own,
+     * and two things make it land properly inside the app: the navbar switches
+     * to that app, and the menu's search defaults (a "My Quotations" filter,
+     * say) are dropped, because they would narrow the list below the number
+     * the tile showed.
+     */
+    openTileAction(action, newWindow) {
+        const menuId = action.mwd_menu_id;
+        if (!menuId) {
+            return this.action.doAction(action, { newWindow });
+        }
+        let context = action.context;
+        try {
+            context = Object.fromEntries(
+                Object.entries(makeContext([user.context, action.context || {}])).filter(
+                    ([key]) => !key.startsWith("search_default_")
+                )
+            );
+        } catch {
+            // A menu context that needs more than the user's own to evaluate
+            // is left as it is: at worst a default filter narrows the list.
+        }
+        return this.action.doAction(
+            { ...action, context },
+            { newWindow, onActionReady: () => this.menu.setCurrentMenu(menuId) }
+        );
+    }
+
+    // Each of these takes `newWindow`, true on a Ctrl+click or a middle click,
+    // so a list can be opened in its own browser tab while the dashboard stays.
+
+    async onOpenTileRecords(tile, newWindow = false) {
         const action = await this.orm.call("mwd.tile", "action_open_tile", [tile.id]);
-        this.action.doAction(action);
+        this.openTileAction(action, newWindow);
     }
 
-    async onOpenLine(tile, line) {
+    async onOpenLine(tile, line, newWindow = false) {
         const action = await this.orm.call("mwd.tile", "action_open_line", [tile.id, line.id]);
-        this.action.doAction(action);
+        this.openTileAction(action, newWindow);
     }
 
-    async onOpenGroup(tile, bar) {
+    async onOpenGroup(tile, bar, newWindow = false) {
         const action = await this.orm.call("mwd.tile", "action_open_group", [tile.id, bar.domain]);
-        this.action.doAction(action);
+        this.openTileAction(action, newWindow);
     }
 
-    async onOpenRecord(tile, entry) {
+    async onOpenRecord(tile, entry, newWindow = false) {
         const action = await this.orm.call("mwd.tile", "action_open_record", [tile.id, entry.id]);
-        this.action.doAction(action);
+        this.openTileAction(action, newWindow);
     }
 }
 

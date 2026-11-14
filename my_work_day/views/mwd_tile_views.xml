@@ -32,6 +32,8 @@
                         </group>
                         <group string="How it looks">
                             <field name="icon" widget="mwd_icon"/>
+                            <field name="menu_id" options="{'no_create': True, 'no_open': True}"
+                                   invisible="not model_name" placeholder="A plain list"/>
                             <field name="width"/>
                             <field name="height"/>
                             <field name="is_shared"/>
@@ -108,7 +110,7 @@
                                 </group>
                             </group>
                         </page>
-                        <page string="Agenda" name="agenda" invisible="tile_type != 'agenda'">
+                        <page string="Today's List" name="agenda" invisible="tile_type != 'agenda'">
                             <group>
                                 <field name="agenda_limit"/>
                             </group>
@@ -120,18 +122,29 @@
                         <page string="Calendar" name="calendar"
                               invisible="tile_type != 'calendar'">
                             <group>
-                                <field name="calendar_mode"/>
+                                <group>
+                                    <field name="calendar_mode"/>
+                                </group>
+                                <group>
+                                    <field name="date_stop_field_id" options="{'no_create': True}"/>
+                                    <field name="all_day_field_id" options="{'no_create': True}"/>
+                                </group>
                             </group>
                             <div class="text-muted">
                                 Draws a real calendar grid inside the tile, using Odoo's
                                 own calendar view. It is read-only: a drag on a tile this
                                 size is likelier to be a slip than an intention.
                                 <br/>
+                                Without an end date field every record is drawn one hour
+                                long. When the model has a calendar view of its own, both
+                                fields are filled in from it as soon as you pick the date
+                                field.
+                                <br/>
                                 A calendar needs vertical room, so give this tile a
                                 height of <em>Tall</em> and at least a double width.
                             </div>
                         </page>
-                        <page string="Breakdown" name="breakdown"
+                        <page string="Bar Chart" name="breakdown"
                               invisible="tile_type != 'breakdown'">
                             <group>
                                 <field name="group_field_id" options="{'no_create': True}"
@@ -217,8 +230,8 @@
                 <filter name="counters" string="Counters" domain="[('tile_type', '=', 'count')]"/>
                 <filter name="numbers" string="Single Numbers"
                         domain="[('tile_type', '=', 'value')]"/>
-                <filter name="agendas" string="Agendas" domain="[('tile_type', '=', 'agenda')]"/>
-                <filter name="breakdowns" string="Breakdowns"
+                <filter name="agendas" string="Today's Lists" domain="[('tile_type', '=', 'agenda')]"/>
+                <filter name="breakdowns" string="Bar Charts"
                         domain="[('tile_type', '=', 'breakdown')]"/>
                 <filter name="calendars" string="Calendars"
                         domain="[('tile_type', '=', 'calendar')]"/>

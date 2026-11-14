@@ -19,7 +19,8 @@ class ResConfigSettings(models.TransientModel):
         string='Users on My Work Day', compute='_compute_mwd_user_count')
     mwd_refresh_interval = fields.Selection(
         [('0', 'Off'), ('120', 'Every 2 minutes'), ('300', 'Every 5 minutes'),
-         ('900', 'Every 15 minutes')],
+         ('900', 'Every 15 minutes'), ('3600', 'Every hour'),
+         ('7200', 'Every 2 hours'), ('14400', 'Every 4 hours')],
         string='Auto Refresh', default='0',
         config_parameter=REFRESH_INTERVAL_PARAM,
         help="How often an open dashboard reloads its counters. This is set "

@@ -1,4 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_ir_model_fields_mwd_reader,ir.model.fields.mwd.reader,base.model_ir_model_fields,my_work_day.group_my_work_day_reader,1,0,0,0
 access_mwd_allowed_model_reader,mwd.allowed.model.reader,model_mwd_allowed_model,my_work_day.group_my_work_day_reader,1,0,0,0
 access_mwd_allowed_model_manager,mwd.allowed.model.manager,model_mwd_allowed_model,my_work_day.group_my_work_day_manager,1,1,1,1
 access_mwd_dashboard_reader,mwd.dashboard.reader,model_mwd_dashboard,my_work_day.group_my_work_day_reader,1,0,0,0

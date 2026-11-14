@@ -88,5 +88,37 @@
             <field name="domain_force">[(1, '=', 1)]</field>
         </record>
 
+        <!--
+            Field metadata. Odoo 19 denies ordinary users any access to
+            ir.model.fields, which left them unable to pick a tile's date or
+            group-by field, or even to display a tile that used one. The access
+            row in ir.model.access.csv opens reading to Readers; this rule then
+            narrows it to the fields of whitelisted models, so the grant is no
+            wider than the dashboard needs.
+
+            Every internal user is a Reader, administrators included, and group
+            rules are OR-ed together: without the second rule below, this one
+            would also narrow what an administrator sees under Settings >
+            Technical > Fields. Access Rights managers are the only group with
+            access to ir.model.fields in core, so they get it back in full.
+        -->
+        <record id="mwd_ir_model_fields_rule_reader" model="ir.rule">
+            <field name="name">My Work Day: fields of selectable models</field>
+            <field name="model_id" ref="base.model_ir_model_fields"/>
+            <field name="groups" eval="[(4, ref('my_work_day.group_my_work_day_reader'))]"/>
+            <field name="domain_force">[('model_id.mwd_allowed_model_ids', '!=', False)]</field>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="mwd_ir_model_fields_rule_access_manager" model="ir.rule">
+            <field name="name">My Work Day: all fields (access rights managers)</field>
+            <field name="model_id" ref="base.model_ir_model_fields"/>
+            <field name="groups" eval="[(4, ref('base.group_erp_manager'))]"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
     </data>
 </odoo>

@@ -3,5 +3,7 @@ from . import mwd_dashboard
 from . import mwd_tile
 from . import mwd_tile_line
 from . import ir_http
+from . import ir_model
+from . import ir_ui_menu
 from . import res_users
 from . import res_config_settings

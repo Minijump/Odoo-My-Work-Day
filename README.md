@@ -13,11 +13,24 @@ database.
 **Tiles.** Each tile points at one model and holds any number of named filters.
 A filter line shows its label and its count: *Quotations 4*. Click the line and
 you land on that exact list, filtered. Click the tile header and you get the whole
-model.
+model. Ctrl+click (Cmd+click on a Mac) or middle-click opens any of these in a new
+browser tab instead, so the dashboard stays where it is.
+
+**Open in an app.** By default a click opens a plain list under My Work Day. Set a
+tile's *Open In* to one of the app's own menus — *Sales › Orders › Quotations*, say —
+and clicks land inside that app instead: its menu bar, its views, its kanban and
+pivot, with a breadcrumb back to the dashboard. Only menus that show the tile's model
+are offered. The list always shows exactly what the tile counted: the menu's own
+filter is replaced by the tile's, and its default search filters (a *My Quotations*
+facet, for instance) are dropped. The one thing that cannot be had is a filter you can
+remove from the search bar — Odoo cannot turn an arbitrary filter into a search facet,
+so the tile's filter arrives fixed. A menu the user cannot see falls back to the plain
+list.
 
 **Colour rules.** A line turns info, success, warning or danger past a threshold you
 set: a tinted row, a coloured left edge and a coloured number, so *Overdue 3* catches
-your eye and *Planned 19* does not. The same rules apply to breakdown bars.
+your eye and *Planned 19* does not. The same rules apply to bar charts and to
+single numbers.
 
 **Five kinds of tile.**
 
@@ -25,8 +38,8 @@ your eye and *Planned 19* does not. The same rules apply to breakdown bars.
 |---|---|
 | Counter | One line per filter, with counts |
 | Number | One count, large, for the figure that matters most |
-| Agenda | Today's records on a date field, in time order |
-| Breakdown | A `read_group` drawn as bars — orders per salesperson, say. Sort by size or by value, so a date breakdown can read chronologically |
+| Today's List | Today's records on a date field, in time order |
+| Bar Chart | A `read_group` drawn as bars — orders per salesperson, say. Sort by size or by value, so a chart over dates can read chronologically |
 | Calendar | A real calendar grid — Odoo's own calendar view, on the date field you pick |
 
 **The calendar tile is the real thing**, not a drawing of one: the month and week
@@ -39,6 +52,20 @@ It does not need the model to have a calendar view. The arch is built around the
 field the tile points at, which is both more useful (you choose the field) and more
 widely applicable: Odoo's own generated fallback insists on an end date that most
 models do not have, and would refuse.
+
+Which calendar you get is therefore which model and which date field you pick: meetings
+are *Calendar Event* on *Start*, the project calendar is *Task* on *Deadline*, and so on
+for anything with a date. One tile shows one model; meetings and deadlines together are
+two tiles.
+
+Give it an **end date field** too, or every record is drawn exactly one hour long — a
+9:00–12:00 meeting as 9:00–10:00 — and an **all-day field**, or an all-day event lands
+in the hour grid at whatever time its start happens to hold. You rarely have to look for
+them: when the model has a calendar view of its own, picking the date field fills both
+in from it.
+
+Clicking the header of a calendar tile opens the model's own calendar view, filtered
+the same way, when the model has one; otherwise it opens the list like any other tile.
 
 **A number tile is a counter tile with the lines taken away**, which is the point:
 when one figure matters more than the five around it, it should not have to share a
@@ -54,9 +81,10 @@ so making one tall is how you make its number bigger.
 **Icons.** Picked from a grid, not typed: the field stores a Font Awesome class, but
 you choose by looking at it, with a search across all 786 icons the bundled font can draw.
 
-**Sharing.** Mark a tile shared and colleagues can copy it onto their own dashboard.
-They get your filters, not your data: the copy belongs to them and counts through
-their own access rights.
+**Sharing.** Mark a tile shared and colleagues can copy it onto their own dashboard,
+either from the *Shared Tiles* menu or from the copy button next to *Add Tile*, which
+picks one without leaving the page. They get your filters, not your data: the copy
+belongs to them and counts through their own access rights.
 
 **App shortcuts.** Pick your apps from a dialog on the dashboard; they sit in the
 header with their real icons, on the one sticky line that holds the controls.
@@ -66,15 +94,16 @@ in one line instead of drawing a screenful of tiles that each read "Nothing to s
 The tiles are one click away, because "all clear" is only believable if you can check
 what was looked at.
 
-**A shortcut back.** An icon in the systray opens the dashboard from anywhere. Once
-My Work Day is not your landing page there is otherwise nothing quick that gets you
-back to it.
+**A shortcut back.** An icon in the systray opens the dashboard from anywhere, and so
+does **Alt+Shift+W** — Odoo's own hotkey mechanism, so holding Alt shows the hint like it
+does for every other button. Once My Work Day is not your landing page there is
+otherwise nothing quick that gets you back to it.
 
 **Auto-refresh.** Off by default, and set by an administrator in *Settings → General
 Settings → My Work Day* rather than per dashboard: the interval decides how often the
-database is queried, which is not a number to leave to each user. When on, it pauses
-while the browser tab is hidden, so a dashboard left open in a background tab stops
-polling.
+database is queried, which is not a number to leave to each user. Anywhere from every
+two minutes to every four hours. When on, it pauses while the browser tab is hidden, so
+a dashboard left open in a background tab stops polling.
 
 ## Security
 
@@ -116,6 +145,17 @@ than what that user could already reach from the menus. There is a test that pro
 this: it adds a record rule hiding records from a user and asserts the tile count
 drops to match.
 
+**One grant on a core model, kept narrow.** Odoo 19 gives ordinary users no access at
+all to `ir.model.fields`, the list of fields behind the *Date Field* and *Group By*
+pickers. Without it a non-administrator could neither build a Today's List, Bar Chart
+or Calendar tile nor even display one. The module therefore lets Readers read field
+definitions, and a record rule narrows that to the fields of selectable models — the
+grant is no wider than the whitelist. Because every internal user is a Reader,
+administrators included, a second rule gives *Access Rights* managers the full list
+back; without it the first rule would also trim what an administrator sees under
+*Settings → Technical → Fields*. Field names are schema, not data: no record of any
+model becomes readable through this.
+
 ## Landing page
 
 Two steps, both opt-in:
@@ -141,12 +181,12 @@ odoo-bin -d <database> --addons-path=<odoo>/addons,<this repo> -i my_work_day
 Then, as an administrator, add a few models under *Configuration → Selectable
 Models*. Until you do, users have nothing to build tiles on.
 
-After an upgrade, *Configuration → Check Tiles* lists any tile whose filters no longer
-match the database — a field that disappeared, a model that was uninstalled. A broken
-tile already reports itself to whoever opens the dashboard; this is the same information
-at the moment an administrator wants it, instead of waiting for someone to notice. It
-validates the tiles rather than running them, so it costs nothing to run on a big
-database.
+After an upgrade, *Settings → General Settings → My Work Day → Check all tiles* lists
+any tile whose filters no longer match the database — a field that disappeared, a
+model that was uninstalled. A broken tile already reports itself to whoever opens the
+dashboard; this is the same information at the moment an administrator wants it,
+instead of waiting for someone to notice. It validates the tiles rather than running
+them, so it costs nothing to run on a big database.
 
 Under *Settings → General Settings → My Work Day* you can also cap what a user may
 build: how many tiles one dashboard may hold, and how many filters one tile may hold.
@@ -184,12 +224,20 @@ Two things that bite on Odoo 19 specifically:
 odoo-bin -d <database> --addons-path=<odoo>/addons,<this repo> -u my_work_day --test-enable --test-tags=/my_work_day --stop-after-init
 ```
 
-70 tests, built on `res.partner` so they pass on a database with nothing else installed.
-They cover the access levels, the colour rules, the breakdown sorting, the calendar arch,
-the limits, the health check, and what happens to a dashboard when a field a tile depends
-on disappears.
+91 tests, built on `res.partner` so they pass on a database with nothing else installed.
+They cover the access levels, the colour rules, the bar chart sorting, the calendar arch
+and its end and all-day fields, the limits, the health check, what a non-administrator
+can and cannot read, how a tile opens inside an app, and what happens to a dashboard
+when a field a tile depends on disappears.
 
-Two traps worth knowing if you add tests:
+Three traps worth knowing if you add tests:
+
+- A test that checks what a non-administrator can do has to `env.invalidate_all()`
+  before switching user. Records the test setup read as the superuser — field
+  definitions especially — stay in the ORM cache, and the user then reads them from
+  there without any access check. That is how the `ir.model.fields` problem above went
+  unnoticed for a while: every test passed, and every real non-administrator got an
+  error.
 
 - When a test writes raw SQL to simulate a broken field, it has to `env.flush_all()`
   first. Records created in the test are still in the ORM's buffer, and the flush would
@@ -215,14 +263,14 @@ here and would do nothing in Community.
 LGPL-3.
 
 ## Roadmap
-- Calendar view seems wrong, it does not respect the time I set in the calendar app + clicking on the tile should open the calendar main view, not a list view (this last point may be more difficult because it does not respects the logic of the tiles. But I think it could be a great improvement, even for every tile: clicking on a tile should open an 'app' or a selected menu instead of a list vie inside the my work day app. To investigate (could be interseting to be able to link an app/menu to a tile and even to a tile line?)). Anyway, I need to know from where it takes the calendar view and if we can take the calendar view we want or only the one of a dedicated app. After a small investigation, it seems that there are 2 kind of views: agenda and calendar: agenda is a list view based on today's date (it is great but maybe should be renamed). Calendar is an embeded calendar view, based on a model and a field. I am not sure we can do better to make sure we have the possibility to have the calendar we want. However, as is, the problem is that there is no 'end date field', so the 'today's calendar' is wrong.
-- add auto refresh time: 1h, 2h, 4h
-- remove the menu that checks the tile, this feature should only be in the main settings (as it is already the case)
-- add a keyboard shortcut to open the dashboard? (low priority, probably impossible)
-- Add chatter in the tile (if not done yet), to track every fields
-- I think we should give the possibility to open a new tab when clicking on a tile/tile line. Currently it opens the menu in the same tab even if I click on maj+ctrl+click. Either do it in the params of the tile, or allow the maj ctrl click
-- simplify tile building? How can the tile form view can be simplified. How can the tile duplication be simplified? How can the tile content edition be simplified? -> It is already acceptable, so no change if it request q lot of code/complexity, only 'simple change that brings lot of values. (add a preview of the tile while building? Allow shared tile selection from the form view (so that user do not need to go in the dedicated menu)). maybe rename tiles'n names? (breakdown in breakdowns graph, agenda in agenda list? ...)
-- code audit (redudent code, useless code, structural problem, security issues, 'low use' features that takes too much code or increase strucutre complexity, ...)
+
+- code audit (redundant code, useless code, structural problems, security issues, 'low
+  use' features that take too much code or increase structural complexity, ...)
 - update readme
 - ?publish on the odoo store?
 - go public
+
+Decided against, for the record: chatter on tiles (would add a dependency on `mail`
+for an audit trail on mostly personal records, and filter changes would need extra
+code to be tracked at all), and a live preview while building a tile (the form already
+counts the records behind the base filter, and saving shows the real tile).
