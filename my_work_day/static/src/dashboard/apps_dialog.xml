@@ -2,7 +2,7 @@
 <templates xml:space="preserve">
 
     <t t-name="my_work_day.AppsDialog">
-        <Dialog title="'Pick your apps'" size="'md'">
+        <Dialog title.translate="Pick your apps" size="'md'">
             <p class="text-muted">
                 These appear as shortcuts at the top of your dashboard.
             </p>

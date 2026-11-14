@@ -145,6 +145,21 @@ than what that user could already reach from the menus. There is a test that pro
 this: it adds a record rule hiding records from a user and asserts the tile count
 drops to match.
 
+**Filters are data, never code.** Tile filters are written by ordinary users and
+evaluated on the server, so they are not run as Python at all. `filter_expression.py`
+parses a filter with Python's own parser and evaluates only an explicit list of forms —
+literal values, lists and tuples, `uid` and the company ids, and the date expressions
+Odoo's filter builder writes (`context_today()`, `relativedelta(...)`,
+`datetime.datetime.combine(...)`, `.strftime()`, `.to_utc()`). Everything else is refused
+because it is not on the list, not because someone thought to forbid it.
+
+That replaced `safe_eval`, Odoo's general-purpose Python sandbox, which is a deny-list
+and proved it twice: with the current user offered as `user`, any Editor could write a
+filter such as `user.sudo().write(...)` and take over the database; and `str.format`
+walks attribute chains hidden inside a string, out of the sandbox's sight, as far as the
+server configuration and its passwords. Both are now simply not part of the grammar,
+and the tests check that every form the filter builder can produce still works.
+
 **One grant on a core model, kept narrow.** Odoo 19 gives ordinary users no access at
 all to `ir.model.fields`, the list of fields behind the *Date Field* and *Group By*
 pickers. Without it a non-administrator could neither build a Today's List, Bar Chart
@@ -224,7 +239,7 @@ Two things that bite on Odoo 19 specifically:
 odoo-bin -d <database> --addons-path=<odoo>/addons,<this repo> -u my_work_day --test-enable --test-tags=/my_work_day --stop-after-init
 ```
 
-91 tests, built on `res.partner` so they pass on a database with nothing else installed.
+109 tests, built on `res.partner` so they pass on a database with nothing else installed.
 They cover the access levels, the colour rules, the bar chart sorting, the calendar arch
 and its end and all-day fields, the limits, the health check, what a non-administrator
 can and cannot read, how a tile opens inside an app, and what happens to a dashboard
@@ -264,8 +279,6 @@ LGPL-3.
 
 ## Roadmap
 
-- code audit (redundant code, useless code, structural problems, security issues, 'low
-  use' features that take too much code or increase structural complexity, ...)
 - update readme
 - ?publish on the odoo store?
 - go public

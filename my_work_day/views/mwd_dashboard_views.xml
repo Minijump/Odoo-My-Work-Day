@@ -7,7 +7,7 @@
         <field name="arch" type="xml">
             <form string="Dashboard">
                 <header>
-                    <button name="%(my_work_day.action_my_work_day_dashboard)d" type="action"
+                    <button name="action_open_dashboard" type="object"
                             string="Open Dashboard" class="btn-primary"/>
                 </header>
                 <sheet>

@@ -16,12 +16,9 @@ class MwdTileLine(models.Model):
     user_id = fields.Many2one(related='tile_id.user_id', string='Owner', store=True, index=True)
     domain = fields.Char(string='Filter', default='[]', required=True)
 
-    model_name = fields.Char(
-        string='Technical Model',
-        default=lambda self: self.env.context.get('default_model_name'),
-        help="Helper copy of the tile's model, so the filter editor knows which "
-             "fields to offer. The dashboard itself always reads the model from the tile.",
-    )
+    # Only for the filter editor, which can read its model from a field of the
+    # line itself but not from the parent tile.
+    model_name = fields.Char(related='tile_id.model_name', string='Technical Model')
 
     color_condition = fields.Selection(
         CONDITIONS, string='Highlight When', default='none', required=True,

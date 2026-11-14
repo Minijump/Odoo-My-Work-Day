@@ -36,7 +36,7 @@
                 <button class="btn btn-sm"
                         t-att-class="state.data?.is_home ? 'btn-primary' : 'btn-light'"
                         t-on-click="onToggleHome"
-                        t-att-title="state.data?.is_home ? 'This is your landing page' : 'Make this your landing page'">
+                        t-att-title="homeButtonTitle">
                     <i class="fa fa-home"/>
                 </button>
             </div>

@@ -31,15 +31,11 @@ class MwdAllowedModel(models.Model):
         help="Leave empty to make this model available to every internal user. "
              "Otherwise only users in at least one of these groups can build tiles on it.",
     )
-    allow_agenda = fields.Boolean(
-        string='Allow Agenda Tiles', default=False,
-        help="Let users build an agenda tile (today's records) on this model.",
-    )
     date_field_id = fields.Many2one(
         'ir.model.fields', string='Default Date Field',
         domain="[('model_id', '=', model_id), ('ttype', 'in', ['date', 'datetime']), ('store', '=', True)]",
         ondelete='set null',
-        help="Date field an agenda tile uses by default.",
+        help="Date field a Today's List or Calendar tile on this model starts with.",
     )
 
     _model_uniq = models.Constraint('UNIQUE(model_id)', "This model is already selectable.")
@@ -80,7 +76,3 @@ class MwdAllowedModel(models.Model):
         if model is None:
             return False
         return model.has_access('read')
-
-    @api.model
-    def _available_domain(self):
-        return [('id', 'in', self._search_available().ids)]

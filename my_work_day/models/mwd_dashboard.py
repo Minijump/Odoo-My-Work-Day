@@ -227,7 +227,6 @@ class MwdDashboard(models.Model):
             'column_count': int(dashboard.column_count),
             'refresh_interval': self._refresh_interval(),
             'show_apps': dashboard.show_apps,
-            'is_owner': dashboard.user_id.id == self.env.uid,
             'can_edit': (
                 dashboard.user_id.id == self.env.uid
                 and self.env.user.has_group('my_work_day.group_my_work_day_editor')
@@ -257,15 +256,19 @@ class MwdDashboard(models.Model):
     # Actions
     # ------------------------------------------------------------------
 
-    def action_open_configuration(self):
+    def action_open_dashboard(self):
+        """Show this dashboard, not the current user's own.
+
+        What an administrator wants from the "All Dashboards" list: the layout a
+        colleague will see. The counts are still the viewer's -- every number
+        is counted with the access rights of whoever is looking.
+        """
         self.ensure_one()
         return {
-            'type': 'ir.actions.act_window',
-            'name': _("Configure Dashboard"),
-            'res_model': 'mwd.dashboard',
-            'res_id': self.id,
-            'views': [[False, 'form']],
-            'target': 'current',
+            'type': 'ir.actions.client',
+            'tag': 'my_work_day_dashboard',
+            'name': self.name,
+            'params': {'dashboard_id': self.id},
         }
 
     @api.model

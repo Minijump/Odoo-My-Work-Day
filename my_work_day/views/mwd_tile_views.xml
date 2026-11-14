@@ -11,7 +11,8 @@
                             class="btn-secondary" invisible="not id"/>
                     <button name="action_duplicate_to_my_dashboard" type="object"
                             string="Copy To My Dashboard" class="btn-secondary"
-                            invisible="not id"/>
+                            invisible="not id"
+                            groups="my_work_day.group_my_work_day_editor"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
@@ -49,7 +50,7 @@
                                 column is unusable once a filter has more than
                                 one condition.
                             -->
-                            <field name="line_ids" context="{'default_model_name': model_name}">
+                            <field name="line_ids">
                                 <list>
                                     <field name="sequence" widget="handle"/>
                                     <field name="name"/>
@@ -189,7 +190,8 @@
                 <field name="is_shared" optional="show"/>
                 <field name="width" optional="hide"/>
                 <button name="action_duplicate_to_my_dashboard" type="object"
-                        icon="fa-clone" title="Copy to my dashboard"/>
+                        icon="fa-clone" title="Copy to my dashboard"
+                        groups="my_work_day.group_my_work_day_editor"/>
             </list>
         </field>
     </record>

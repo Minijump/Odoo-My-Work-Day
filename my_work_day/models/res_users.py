@@ -6,7 +6,6 @@ HOME_ACTION_PARAM = 'my_work_day.default_home_action'
 class ResUsers(models.Model):
     _inherit = 'res.users'
 
-    mwd_dashboard_ids = fields.One2many('mwd.dashboard', 'user_id', string='My Work Day Dashboards')
     mwd_favorite_menu_ids = fields.Many2many(
         'ir.ui.menu', 'mwd_user_favorite_menu_rel', 'user_id', 'menu_id',
         string='Favourite Apps',

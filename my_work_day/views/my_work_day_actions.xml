@@ -47,6 +47,7 @@
         <field name="model_id" ref="my_work_day.model_mwd_tile"/>
         <field name="state">code</field>
         <field name="code">action = model.action_check_tiles()</field>
+        <field name="group_ids" eval="[(4, ref('my_work_day.group_my_work_day_manager'))]"/>
     </record>
 
     <record id="action_mwd_allowed_model" model="ir.actions.act_window">

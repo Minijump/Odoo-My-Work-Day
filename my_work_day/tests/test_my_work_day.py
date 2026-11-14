@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from odoo.addons.my_work_day.models.mwd_dashboard import MwdDashboard
+from odoo import fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import Form, TransactionCase, tagged
 
@@ -378,9 +379,9 @@ class TestMyWorkDay(TransactionCase):
         self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
         data = self.env['mwd.dashboard'].with_user(self.alice).get_dashboard_data()
         for key in ('id', 'name', 'column_count', 'refresh_interval', 'show_apps',
-                    'is_owner', 'is_home', 'app_menu_ids', 'tiles'):
+                    'can_edit', 'is_home', 'app_menu_ids', 'tiles'):
             self.assertIn(key, data)
-        self.assertTrue(data['is_owner'])
+        self.assertTrue(data['can_edit'])
         self.assertIsInstance(data['column_count'], int)
         self.assertIsInstance(data['refresh_interval'], int)
 
@@ -433,8 +434,7 @@ class TestMyWorkDay(TransactionCase):
     def test_a_reader_can_open_a_dashboard_without_being_able_to_create_one(self):
         """Reading your own dashboard is part of being an internal user."""
         data = self.env['mwd.dashboard'].with_user(self.reader).get_dashboard_data()
-        self.assertTrue(data['id'])
-        self.assertTrue(data['is_owner'])
+        self.assertEqual(data['id'], self._dashboard_for(self.reader).id)
         self.assertFalse(data['can_edit'], "a Reader must not be offered the edit controls")
 
     def test_a_reader_cannot_build_a_tile(self):
@@ -1256,3 +1256,218 @@ class TestMyWorkDay(TransactionCase):
             form.menu_id = menu
             form.allowed_model_id = allowed_currency
             self.assertFalse(form.menu_id)
+
+    # ------------------------------------------------------------------
+    # Code audit: what a filter may and may not do
+    # ------------------------------------------------------------------
+
+    def test_a_filter_cannot_run_code_with_someone_elses_rights(self):
+        """The hole this closes: `user` in the filter context let an Editor run
+        `user.sudo().write(...)` and make themselves an administrator."""
+        attempts = [
+            "[('id', '!=', user.sudo().write({'name': 'PWNED'}))]",
+            "[('id', 'in', user.env['res.users'].sudo().search([]).ids)]",
+            "[('id', '=', user.id)]",
+        ]
+        for domain in attempts:
+            with self.subTest(domain=domain), self.assertRaises(UserError):
+                self._counter_tile(self.alice, [{'name': 'All', 'domain': domain}])
+        self.env.invalidate_all()
+        self.assertEqual(self.alice.name, 'Alice')
+
+    def test_the_filter_context_holds_no_record(self):
+        """Belt and braces: the evaluator calls no method on what it is given,
+        but nothing a filter can name should be an object with methods."""
+        tile = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        context = tile.with_user(self.alice)._filter_names()
+        for name, value in context.items():
+            self.assertNotIsInstance(value, models.BaseModel, "%r is a record" % name)
+
+    def test_a_plain_uid_filter_still_works(self):
+        tile = self._counter_tile(self.alice, [{'name': 'Me', 'domain': "[('id', '=', uid)]"}])
+        self.assertFalse(tile.with_user(self.alice)._get_tile_data()['lines'][0]['error'])
+
+    # ------------------------------------------------------------------
+    # Code audit: the bugs found on the way
+    # ------------------------------------------------------------------
+
+    def test_only_administrators_may_check_every_tile(self):
+        with self.assertRaises(AccessError):
+            self.env['mwd.tile'].with_user(self.alice).action_check_tiles()
+        self.assertEqual(
+            self.env.ref('my_work_day.action_mwd_tile_check').group_ids,
+            self.env.ref('my_work_day.group_my_work_day_manager'),
+        )
+
+    def test_changing_the_model_clears_the_calendar_end_fields(self):
+        """They belonged to the old model, and would have refused the save."""
+        self._partner_calendar_view()
+        allowed_currency = self.env['mwd.allowed.model'].create({
+            'model_id': self.env['ir.model']._get('res.currency').id,
+        })
+        tile_model = self.env['mwd.tile'].with_user(self.alice).with_context(
+            default_dashboard_id=self._dashboard_for(self.alice).id)
+        with Form(tile_model) as form:
+            form.name = 'Moving'
+            form.allowed_model_id = self.allowed_partner
+            form.tile_type = 'calendar'
+            form.date_field_id = self._partner_field('create_date')
+            self.assertTrue(form.date_stop_field_id)
+            form.allowed_model_id = allowed_currency
+            self.assertFalse(form.date_stop_field_id)
+            self.assertFalse(form.all_day_field_id)
+            form.date_field_id = self.env['ir.model.fields']._get('res.currency', 'create_date')
+
+    def test_a_line_takes_its_model_from_the_tile(self):
+        """Including on a tile that is not saved yet, which is where the filter
+        editor needs it."""
+        tile_model = self.env['mwd.tile'].with_user(self.alice).with_context(
+            default_dashboard_id=self._dashboard_for(self.alice).id)
+        with Form(tile_model) as form:
+            form.name = 'New'
+            form.allowed_model_id = self.allowed_partner
+            with form.line_ids.new() as line:
+                line.name = 'All'
+                self.assertEqual(line.model_name, 'res.partner')
+        tile = form.record
+        self.assertEqual(tile.line_ids.model_name, 'res.partner')
+
+    def test_open_dashboard_shows_that_dashboard(self):
+        """From All Dashboards, an administrator opens the colleague's layout."""
+        bob_dashboard = self._dashboard_for(self.bob)
+        action = bob_dashboard.action_open_dashboard()
+        self.assertEqual(action['tag'], 'my_work_day_dashboard')
+        self.assertEqual(action['params']['dashboard_id'], bob_dashboard.id)
+
+    def test_a_tile_that_lost_its_field_says_so_plainly(self):
+        tile = self._breakdown_tile(self.alice)
+        self._blank_tile_column(tile, 'group_field_id')
+        error = tile.with_user(self.alice)._get_tile_data()['error']
+        self.assertTrue(error)
+        self.assertNotIn('False', error)
+
+    # ------------------------------------------------------------------
+    # The filter sandbox, beyond records
+    # ------------------------------------------------------------------
+
+    def _eval_as_alice(self, expression):
+        tile = self._counter_tile(self.alice, [{'name': 'All', 'domain': "[]"}])
+        return tile.with_user(self.alice)._eval_domain(expression)
+
+    def test_a_filter_cannot_read_the_server_configuration(self):
+        """The format-string route: it got as far as the database password."""
+        leak = ("[('name', '=', '{0.__init__.__globals__[calendar].sys.modules[odoo]"
+                ".tools.config.options[db_password]}'.format(relativedelta))]")
+        with self.assertRaises(UserError):
+            self._eval_as_alice(leak)
+
+    def test_every_way_to_reach_str_format_is_refused(self):
+        attempts = [
+            "[('name', '=', '{0.__class__}'.format(today))]",
+            "[('name', '=', '{x.__class__}'.format_map({'x': today}))]",
+            "[('name', '=', str.format('{0.__class__}', today))]",
+            # Nested code is checked too, not only the top level.
+            "[('name', '=', (lambda: '{0}'.format(today))())]",
+            "[('name', 'in', [s.format(today) for s in ['{0}']])]",
+        ]
+        for expression in attempts:
+            with self.subTest(expression=expression), self.assertRaises(UserError):
+                self._eval_as_alice(expression)
+
+    def test_the_word_format_in_a_value_is_fine(self):
+        """Only the attribute is refused, not the word."""
+        domain = self._eval_as_alice("[('name', 'ilike', 'format')]")
+        self.assertEqual(domain, [('name', 'ilike', 'format')])
+
+    def test_a_filter_cannot_stall_a_worker_with_sleep(self):
+        with self.assertRaises(UserError):
+            self._eval_as_alice("[('id', '!=', time.sleep(0))]")
+
+    def test_the_builders_datetime_filters_work_on_the_server(self):
+        """What Odoo's filter builder writes for "today" on a datetime field."""
+        expression = (
+            "[('create_date', '>=', datetime.datetime.combine(context_today(), "
+            "datetime.time(0, 0, 0)).to_utc().strftime('%Y-%m-%d %H:%M:%S'))]"
+        )
+        self.alice.tz = 'Europe/Brussels'
+        domain = self._eval_as_alice(expression)
+        start_utc, _end, _today = self._counter_tile(
+            self.alice, [{'name': 'All', 'domain': "[]"}]).with_user(self.alice)._today_bounds()
+        self.assertEqual(domain[0][2], fields.Datetime.to_string(start_utc),
+                         "midnight in the user's timezone, expressed in UTC")
+
+    # ------------------------------------------------------------------
+    # Filters are read as data: what the grammar accepts and refuses
+    # ------------------------------------------------------------------
+
+    # What Odoo's filter builder writes for its "smart date" ranges, copied
+    # from web/static/src/core/tree_editor/virtual_operators.js.
+    BUILDER_DELTAS = [
+        '', 'days = 1', 'days = -7', 'days = -30', 'day = 1',
+        'day = 1, months = -1', 'day = 1, month = 1', 'day = 1, months = -12',
+    ]
+
+    def test_every_date_filter_the_builder_writes_is_understood(self):
+        for delta in self.BUILDER_DELTAS:
+            value = ('context_today().strftime("%Y-%m-%d")' if not delta else
+                     "(context_today() + relativedelta(%s)).strftime('%%Y-%%m-%%d')" % delta)
+            with self.subTest(delta=delta):
+                domain = self._eval_as_alice("[('date', '>=', %s)]" % value)
+                fields.Date.to_date(domain[0][2])  # a real date string
+
+    def test_every_datetime_filter_the_builder_writes_is_understood(self):
+        for delta in self.BUILDER_DELTAS:
+            day = 'context_today()' if not delta else 'context_today() + relativedelta(%s)' % delta
+            value = ('datetime.datetime.combine(%s, datetime.time(0, 0, 0))'
+                     '.to_utc().strftime("%%Y-%%m-%%d %%H:%%M:%%S")' % day)
+            with self.subTest(delta=delta):
+                domain = self._eval_as_alice("[('create_date', '>=', %s)]" % value)
+                fields.Datetime.to_datetime(domain[0][2])
+
+    def test_the_shipped_starter_filters_are_understood(self):
+        for blueprint in self.env['mwd.dashboard']._starter_tile_blueprints():
+            for _name, domain, *_rest in blueprint['lines']:
+                with self.subTest(domain=domain):
+                    self.assertIsInstance(self._eval_as_alice(domain), list)
+
+    def test_plain_domains_keep_their_shape(self):
+        self.assertEqual(
+            self._eval_as_alice(
+                "['|', ('state', 'in', ['draft', 'sent']), '!', ('amount', '>', -1.5), "
+                "('user_id', 'in', [uid]), ('active', '=', True), ('note', '=', False)]"),
+            ['|', ('state', 'in', ['draft', 'sent']), '!', ('amount', '>', -1.5),
+             ('user_id', 'in', [self.alice.id]), ('active', '=', True), ('note', '=', False)],
+        )
+
+    def test_anything_outside_the_grammar_is_refused(self):
+        """Not a list of known attacks: things that are simply not on the list."""
+        refused = [
+            "uid.real",                              # attribute
+            "[1, 2][0]",                             # subscript
+            "uid == 1",                              # comparison
+            "uid and 1",                             # boolean operator
+            "uid * 2",                               # arithmetic on numbers
+            "2 ** 64",                               # power
+            "(lambda: 1)()",                         # lambda
+            "[x for x in [1]]",                      # comprehension
+            "{'a': 1}",                              # dict
+            "{1}",                                   # set
+            "f'{uid}'",                              # f-string
+            "bool(1)",                               # any other function
+            "str(uid)",
+            "'x'.upper()",                           # a method on anything but a date
+            "today.year",                            # an attribute of a date
+            "context_today().weekday()",             # a date method not on the list
+            "context_today(1)",                      # unexpected argument
+            "relativedelta(days=1.5)",               # not a whole number
+            "relativedelta(leapdays=1)",             # keyword not on the list
+            "relativedelta(**{'days': 1})",          # keyword splat
+            "datetime.datetime.now()",               # module function not on the list
+            "datetime.time(*[1, 2])",                # positional splat
+            "context_today().strftime()",            # missing argument
+            "user",                                  # a name that is not there
+            "time.sleep(1)",
+        ]
+        for expression in refused:
+            with self.subTest(expression=expression), self.assertRaises(UserError):
+                self._eval_as_alice("[('name', '=', %s)]" % expression)

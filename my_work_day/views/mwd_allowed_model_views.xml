@@ -11,7 +11,6 @@
                 <field name="model_id" options="{'no_create': True}"/>
                 <field name="model_name" optional="show"/>
                 <field name="group_ids" widget="many2many_tags" optional="show"/>
-                <field name="allow_agenda" optional="show"/>
                 <field name="date_field_id" optional="hide" options="{'no_create': True}"/>
                 <field name="active" column_invisible="True"/>
             </list>
@@ -36,9 +35,7 @@
                         <group>
                             <field name="group_ids" widget="many2many_tags"
                                    options="{'no_create': True}"/>
-                            <field name="allow_agenda"/>
-                            <field name="date_field_id" options="{'no_create': True}"
-                                   invisible="not allow_agenda"/>
+                            <field name="date_field_id" options="{'no_create': True}"/>
                         </group>
                     </group>
                     <div class="text-muted">
@@ -59,7 +56,6 @@
             <search string="Selectable Models">
                 <field name="name"/>
                 <field name="model_name"/>
-                <filter name="agenda" string="Agenda Allowed" domain="[('allow_agenda', '=', True)]"/>
                 <filter name="restricted" string="Group Restricted" domain="[('group_ids', '!=', False)]"/>
                 <separator/>
                 <filter name="inactive" string="Archived" domain="[('active', '=', False)]"/>

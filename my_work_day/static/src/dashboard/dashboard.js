@@ -45,13 +45,15 @@ export class MwdDashboard extends Component {
         onWillUnmount(() => this.stopAutoRefresh());
 
         // Pausing while the tab is hidden is what makes auto-refresh safe to
-        // leave on: a dashboard forgotten overnight stops querying.
+        // leave on: a dashboard forgotten overnight stops querying. Coming back
+        // catches up at once -- but only when auto-refresh is on at all: with
+        // it off, the administrator decided the dashboard reloads when someone
+        // asks, and switching tabs is not asking.
         this.onVisibilityChange = () => {
-            if (document.visibilityState === "visible") {
-                this.startAutoRefresh();
-                this.load({ silent: true });
-            } else {
+            if (document.visibilityState !== "visible") {
                 this.stopAutoRefresh();
+            } else if (this.state.data?.refresh_interval) {
+                this.load({ silent: true });
             }
         };
         document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -86,6 +88,12 @@ export class MwdDashboard extends Component {
         return `--mwd-columns: ${columns};`;
     }
 
+    get homeButtonTitle() {
+        return this.state.data?.is_home
+            ? _t("This is your landing page")
+            : _t("Make this your landing page");
+    }
+
     get refreshedLabel() {
         if (!this.state.refreshedAt) {
             return "";
@@ -96,6 +104,16 @@ export class MwdDashboard extends Component {
         }));
     }
 
+    /**
+     * Fetch everything and redraw.
+     *
+     * Errors are handled here rather than thrown on. A load that fails on
+     * opening shows its own message in place of the tiles, instead of the
+     * whole action failing to mount. A background refresh that fails -- a
+     * laptop waking up, a network blip -- keeps the counts already on screen
+     * and tries again next time, instead of raising an error dialog at every
+     * interval.
+     */
     async load({ silent = false } = {}) {
         if (!silent) {
             this.state.loading = true;
@@ -107,14 +125,14 @@ export class MwdDashboard extends Component {
             this.state.data = data;
             this.state.error = null;
             this.state.refreshedAt = new Date();
-            this.startAutoRefresh();
         } catch (error) {
-            // A dashboard that cannot load should say so rather than showing a
-            // blank page, so the user knows to tell someone.
-            this.state.error = error?.data?.message || error?.message || _t("Unknown error");
-            throw error;
+            if (!silent || !this.state.data) {
+                this.state.error =
+                    error?.data?.message || error?.message || _t("Unknown error");
+            }
         } finally {
             this.state.loading = false;
+            this.startAutoRefresh();
         }
     }
 
@@ -140,7 +158,9 @@ export class MwdDashboard extends Component {
 
     async onRefresh() {
         await this.load();
-        this.notification.add(_t("Dashboard refreshed"), { type: "success" });
+        if (!this.state.error) {
+            this.notification.add(_t("Dashboard refreshed"), { type: "success" });
+        }
     }
 
     onConfigure() {

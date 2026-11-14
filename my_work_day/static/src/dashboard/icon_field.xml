@@ -11,7 +11,7 @@
     </t>
 
     <t t-name="my_work_day.IconDialog">
-        <Dialog title="'Pick an icon'" size="'lg'">
+        <Dialog title.translate="Pick an icon" size="'lg'">
             <input type="text" class="form-control mb-3"
                    placeholder="Search all icons, e.g. cart, bell, chart"
                    t-model="state.search"/>

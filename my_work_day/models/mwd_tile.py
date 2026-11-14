@@ -10,8 +10,8 @@ from markupsafe import escape
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.fields import Domain
-from odoo.tools import safe_eval as safe_eval_module
-from odoo.tools.safe_eval import safe_eval
+
+from .filter_expression import evaluate_filter
 
 _logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ def limit_from(env, param):
         # dashboard; an unreadable limit is no limit.
         return None
     return limit if limit > 0 else None
+
 
 COLORS = [
     ('muted', 'Neutral'),
@@ -215,12 +216,13 @@ class MwdTile(models.Model):
     def _onchange_allowed_model_id(self):
         """Clear anything that referred to the previous model."""
         self.date_field_id = False
+        self.date_stop_field_id = False
+        self.all_day_field_id = False
         self.group_field_id = False
         self.menu_id = False
         self.base_domain = '[]'
         for line in self.line_ids:
             line.domain = '[]'
-            line.model_name = self.allowed_model_id.model_name
         if self.allowed_model_id.date_field_id:
             self.date_field_id = self.allowed_model_id.date_field_id
 
@@ -271,10 +273,12 @@ class MwdTile(models.Model):
         The field's domain already filters the dropdown, but a domain is only a
         hint to the client. This is the part that actually holds.
         """
-        available = self.env['mwd.allowed.model']._search_available()
+        available = None
         for tile in self:
             if tile.user_id.id != self.env.uid and not self.env.user.has_group('base.group_system'):
                 continue
+            if available is None:
+                available = self.env['mwd.allowed.model']._search_available()
             if tile.allowed_model_id not in available:
                 raise ValidationError(_(
                     "You are not allowed to build a tile on %s.",
@@ -351,53 +355,22 @@ class MwdTile(models.Model):
                         field=field.name, model=tile.model_name,
                     ))
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        tiles = super().create(vals_list)
-        tiles._sync_line_model_name()
-        return tiles
-
-    def write(self, vals):
-        result = super().write(vals)
-        if 'allowed_model_id' in vals:
-            self._sync_line_model_name()
-        return result
-
-    def _sync_line_model_name(self):
-        """Keep the lines' helper copy of the model name in step with the tile.
-
-        ``model_name`` on a line exists only so the domain editor widget knows
-        which model to offer fields for. Counting never trusts it.
-        """
-        for tile in self:
-            lines = tile.line_ids.filtered(lambda l: l.model_name != tile.model_name)
-            if lines:
-                lines.model_name = tile.model_name
-
     # ------------------------------------------------------------------
     # Domain handling
     # ------------------------------------------------------------------
 
-    def _domain_eval_context(self):
-        """Names a user may use inside a tile domain.
+    def _filter_names(self):
+        """The plain values a tile filter may refer to by name.
 
-        Deliberately small: enough to write "mine" and "today" filters, and
-        nothing that reaches the ORM or the file system. The date and time
-        modules are Odoo's own wrapped versions, which expose only a safe
-        subset of attributes -- safe_eval refuses a raw module outright.
+        Values, never objects: see filter_expression.py for why a filter is
+        read as data rather than run as code.
         """
         self.ensure_one()
         return {
             'uid': self.env.uid,
-            'user': self.env.user.with_context({}),
             'company_id': self.env.company.id,
             'company_ids': self.env.companies.ids,
             'allowed_company_ids': self.env.companies.ids,
-            'time': safe_eval_module.time,
-            'datetime': safe_eval_module.datetime,
-            'dateutil': safe_eval_module.dateutil,
-            'relativedelta': relativedelta,
-            'context_today': lambda: fields.Date.context_today(self),
             'today': fields.Date.context_today(self),
             'now': fields.Datetime.now(),
         }
@@ -408,7 +381,9 @@ class MwdTile(models.Model):
         if not domain_string or not domain_string.strip():
             return []
         try:
-            domain = safe_eval(domain_string, self._domain_eval_context())
+            domain = evaluate_filter(
+                domain_string, self._filter_names(),
+                today=fields.Date.context_today(self), timezone=self._user_timezone())
         except Exception as error:
             raise UserError(_("Invalid filter: %s", error)) from error
         if not isinstance(domain, (list, tuple)):
@@ -430,10 +405,16 @@ class MwdTile(models.Model):
         except Exception as error:
             raise ValidationError(_("Invalid filter: %s", error)) from error
 
-    def _full_domain(self, extra_domain=()):
-        """The tile's base filter combined with a line's own filter."""
+    def _full_domain(self, extra_domain=(), base=None):
+        """The tile's base filter combined with a line's own filter.
+
+        ``base`` lets a caller that combines many filters with the same base
+        evaluate it once rather than once per filter.
+        """
         self.ensure_one()
-        return list(Domain(self._eval_domain(self.base_domain)) & Domain(list(extra_domain)))
+        if base is None:
+            base = Domain(self._eval_domain(self.base_domain))
+        return list(base & Domain(list(extra_domain)))
 
     def _record_model(self):
         """The model this tile reads, as the current user.
@@ -492,6 +473,7 @@ class MwdTile(models.Model):
         """One count per line, each isolated so a single bad filter is survivable."""
         self.ensure_one()
         model = self._record_model()
+        base = Domain(self._eval_domain(self.base_domain))
         lines = []
         total = 0
         for line in self.line_ids:
@@ -503,7 +485,8 @@ class MwdTile(models.Model):
                 'error': False,
             }
             try:
-                count = model.search_count(self._full_domain(self._eval_domain(line.domain)))
+                count = model.search_count(
+                    self._full_domain(self._eval_domain(line.domain), base=base))
             except (AccessError, UserError) as error:
                 entry['error'] = str(error)
                 entry['color'] = 'danger'
@@ -539,11 +522,13 @@ class MwdTile(models.Model):
                 self.value_color, count),
         }
 
+    def _user_timezone(self):
+        return pytz.timezone(self.env.user.tz or self.env.context.get('tz') or 'UTC')
+
     def _today_bounds(self):
         """Start and end of the user's today, as naive UTC datetimes."""
         self.ensure_one()
-        timezone = pytz.timezone(self.env.user.tz or self.env.context.get('tz') or 'UTC')
-        now_local = pytz.utc.localize(fields.Datetime.now()).astimezone(timezone)
+        now_local = pytz.utc.localize(fields.Datetime.now()).astimezone(self._user_timezone())
         start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
         end_local = start_local + relativedelta(days=1)
         return (
@@ -551,6 +536,21 @@ class MwdTile(models.Model):
             end_local.astimezone(pytz.utc).replace(tzinfo=None),
             start_local.date(),
         )
+
+    def _required_field_name(self, field, model):
+        """The technical name of a field the tile cannot work without.
+
+        Raises a readable error when it is gone: either the field record itself
+        was deleted with its module (the link is then empty), or it still exists
+        but the model no longer has it.
+        """
+        name = field.sudo().name
+        if not name:
+            raise UserError(_("This tile has lost one of its fields, probably in an "
+                              "upgrade. Pick it again in the tile's settings."))
+        if name not in model._fields:
+            raise UserError(_("The field %s no longer exists.", name))
+        return name
 
     def _get_agenda_data(self):
         """Today's records of this model, in time order.
@@ -561,10 +561,8 @@ class MwdTile(models.Model):
         """
         self.ensure_one()
         model = self._record_model()
-        field_name = self.date_field_id.sudo().name
-        field = model._fields.get(field_name)
-        if field is None:
-            raise UserError(_("The field %s no longer exists.", field_name))
+        field_name = self._required_field_name(self.date_field_id, model)
+        field = model._fields[field_name]
 
         start_utc, end_utc, today = self._today_bounds()
         if field.type == 'date':
@@ -584,8 +582,7 @@ class MwdTile(models.Model):
         for record in records:
             value = record[field_name]
             if field.type == 'datetime' and value:
-                local = pytz.utc.localize(value).astimezone(
-                    pytz.timezone(self.env.user.tz or 'UTC'))
+                local = pytz.utc.localize(value).astimezone(self._user_timezone())
                 label = local.strftime('%H:%M')
             else:
                 label = _("All day")
@@ -616,9 +613,7 @@ class MwdTile(models.Model):
         """
         self.ensure_one()
         model = self._record_model()
-        field_name = self.date_field_id.sudo().name
-        if field_name not in model._fields:
-            raise UserError(_("The field %s no longer exists.", field_name))
+        field_name = self._required_field_name(self.date_field_id, model)
         # The end and all-day fields are optional, and a field that vanished
         # since the tile was built is simply left out rather than failing the
         # tile: a calendar with one-hour blocks is still a calendar.
@@ -658,10 +653,8 @@ class MwdTile(models.Model):
         """How many records fall into each value of the grouping field."""
         self.ensure_one()
         model = self._record_model()
-        field_name = self.group_field_id.sudo().name
-        field = model._fields.get(field_name)
-        if field is None:
-            raise UserError(_("The field %s no longer exists.", field_name))
+        field_name = self._required_field_name(self.group_field_id, model)
+        field = model._fields[field_name]
 
         # Grouping by a bare date or datetime is rejected outright: without a
         # granularity it would mean one bar per timestamp.
@@ -769,6 +762,10 @@ class MwdTile(models.Model):
         whoever opens it. This is the same information at the moment an
         administrator wants it: just after an upgrade.
         """
+        # It reads every tile on the database, so it is for administrators
+        # only, whoever calls the method and however they reach it.
+        if not self.env.user.has_group('my_work_day.group_my_work_day_manager'):
+            raise AccessError(_("Only My Work Day administrators can check every tile."))
         tiles = self.sudo().search([])
         broken = tiles.filtered(lambda tile: tile._broken_reason())
         if not broken:

@@ -1,6 +1,7 @@
 import { Component, useState } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
+import { _t } from "@web/core/l10n/translation";
 import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
 
@@ -54,9 +55,9 @@ export class MwdAppsDialog extends Component {
     get selectionLabel() {
         const count = this.state.selected.size;
         if (!count) {
-            return "No app selected";
+            return _t("No app selected");
         }
-        return count === 1 ? "1 app selected" : `${count} apps selected`;
+        return count === 1 ? _t("1 app selected") : _t("%s apps selected", count);
     }
 
     async onConfirm() {
