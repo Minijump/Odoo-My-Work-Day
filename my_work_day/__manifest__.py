@@ -3,21 +3,14 @@
     'version': '19.0.1.0.0',
     'category': 'Productivity',
     'summary': 'A personal daily dashboard showing the work waiting for you',
-    'description': """
-My Work Day
-===========
-
-Replaces the app switcher landing page with a personal dashboard that shows
-the work actually waiting for the user: draft orders, invoices to approve,
-activities due today, and anything else they care to count.
-
-Users build their own tiles out of named filters on models an administrator
-has made available. Every count and every click-through runs with the user's
-own access rights, so the dashboard can never show more than the user could
-already reach from the menus.
-""",
     'author': 'SJ',
-    'license': 'LGPL-3',
+    'website': 'https://github.com/Minijump/Odoo-My-Work-Day',
+    # MIT, see LICENSE. Odoo's module registry has no 'MIT' value, and MIT is
+    # an OSI-approved licence, which is what this value stands for.
+    'license': 'Other OSI approved licence',
+    # The first image is the App Store thumbnail; the full description is
+    # static/description/index.html.
+    'images': ['static/description/banner.png'],
     'depends': ['base', 'web'],
     'data': [
         'security/my_work_day_groups.xml',
