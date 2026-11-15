@@ -8,9 +8,9 @@
     # MIT, see LICENSE. Odoo's module registry has no 'MIT' value, and MIT is
     # an OSI-approved licence, which is what this value stands for.
     'license': 'Other OSI approved licence',
-    # The first image is the App Store thumbnail; the full description is
-    # static/description/index.html.
-    'images': ['static/description/banner.png'],
+    # The first image is the App Store thumbnail (animated: the callout cycles
+    # through the tiles); the full description is static/description/index.html.
+    'images': ['static/description/banner.gif'],
     'depends': ['base', 'web'],
     'data': [
         'security/my_work_day_groups.xml',
