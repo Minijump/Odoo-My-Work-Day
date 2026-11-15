@@ -3,7 +3,7 @@
     'version': '19.0.1.0.0',
     'category': 'Productivity',
     'summary': 'A personal daily dashboard showing the work waiting for you',
-    'author': 'SJ',
+    'author': 'Minijump',
     'website': 'https://github.com/Minijump/Odoo-My-Work-Day',
     # MIT, see LICENSE. Odoo's module registry has no 'MIT' value, and MIT is
     # an OSI-approved licence, which is what this value stands for.
